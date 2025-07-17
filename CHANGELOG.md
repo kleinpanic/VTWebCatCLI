@@ -4,6 +4,13 @@ All notable changes to **WebcatCLI** between **v1.0.0** and **v1.1.0**.
 
 ---
 
+## [1.1.1] = 2025-07-17
+
+### New addition
+
+Added @package validation and requirements when in nested sub directory. 
+Added @return and @param detection within javadoc and validation. 
+
 ## [1.1.0] – 2025-07-17
 
 ### 🚀 New Features

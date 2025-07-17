@@ -15,14 +15,86 @@ A self-contained WebCAT-style pre-submission checker:
   - `--version` to show current CLI version
 """
 
-import argparse, json, os, re, subprocess, sys, tempfile, xml.etree.ElementTree as ET
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 DEBUG = False
 
+# -------------------------------------------------------------------
+# Helpers for @param / @return validation
+# -------------------------------------------------------------------
+def parse_methods_and_javadoc(lines):
+    """
+    Scans source lines, pairing each method signature with its preceding Javadoc block.
+    Returns a list of tuples: (line_no, method_name, params_list, return_type, javadoc_lines)
+    """
+    methods = []
+    javadoc = []
+    in_jdoc = False
+    for idx, ln in enumerate(lines):
+        stripped = ln.strip()
+        if stripped.startswith('/**'):
+            in_jdoc = True
+            javadoc = [ln]
+            continue
+        if in_jdoc:
+            javadoc.append(ln)
+            if stripped.endswith('*/'):
+                in_jdoc = False
+            continue
+        # Detect method signature
+        m = re.match(r'^\s*(public|protected|private)\s+([\w<>\[\]]+)\s+(\w+)\s*\((.*?)\)', ln)
+        if m:
+            return_type = m.group(2)
+            name = m.group(3)
+            params_str = m.group(4)
+            params = [p.strip().split()[-1] for p in params_str.split(',') if p.strip()]
+            # Attach Javadoc lines (may be empty if no /** block found)
+            methods.append((idx + 1, name, params, return_type, javadoc.copy()))
+            javadoc = []
+    return methods
+
+def check_javadoc_params_and_return(line_no, name, params, return_type, javadoc, errs):
+    """
+    Ensures @param tags match actual parameters, and @return presence/absence matches return type.
+    Only runs if a Javadoc block was provided.
+    """
+    if not javadoc:
+        return
+
+    jd_text = ''.join(javadoc)
+    param_tags = re.findall(r'@param\s+(\w+)', jd_text)
+    has_return = '@return' in jd_text
+
+    # Missing or mismatched @param
+    for p in params:
+        if p not in param_tags:
+            errs.append(f'Line {line_no}: missing @param for "{p}" in method {name}()')
+    for p in param_tags:
+        if p not in params:
+            errs.append(f'Line {line_no}: @param "{p}" does not match any parameter in {name}()')
+
+    # @return checks
+    if return_type and return_type != 'void':
+        if not has_return:
+            errs.append(f'Line {line_no}: missing @return in Javadoc for method {name}()')
+    else:
+        if has_return:
+            errs.append(f'Line {line_no}: unexpected @return in void method {name}()')
+
+# -------------------------------------------------------------------
+# Core functions (mostly unchanged, with targeted enhancements)
+# -------------------------------------------------------------------
+
 def load_rules(profile):
-    path = os.path.join(os.path.dirname(__file__), 'templates',
-                        f'{profile}.rules.json')
+    path = os.path.join(os.path.dirname(__file__), 'templates', f'{profile}.rules.json')
     if not os.path.isfile(path):
         sys.exit(f'Error: profile "{profile}" not found')
     return json.load(open(path, encoding='utf-8'))
@@ -64,17 +136,15 @@ def override_rules(rules, args):
 
 def collect_sources(path):
     if path is None:
-        tmp = tempfile.NamedTemporaryFile(delete=False,
-                                          suffix='.java',
-                                          mode='w',
-                                          encoding='utf-8')
-        tmp.write(sys.stdin.read()); tmp.close()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.java', mode='w', encoding='utf-8')
+        tmp.write(sys.stdin.read())
+        tmp.close()
         return [tmp.name]
     src = os.path.join(path, 'src')
     if not os.path.isdir(src):
         sys.exit(f'Error: expected directory "{src}"')
     out = []
-    for root,_,files in os.walk(src):
+    for root, _, files in os.walk(src):
         for fn in files:
             if fn.endswith('.java'):
                 out.append(os.path.join(root, fn))
@@ -86,9 +156,6 @@ def ensure_pom(root, rules):
         if DEBUG:
             print(f"Debug: pom.xml already exists at {pom}, skipping generation")
         return
-
-    if DEBUG:
-        print(f"Debug: ensure_pom called with root={root}")
 
     # determine external JAR
     script_dir = os.path.dirname(__file__)
@@ -114,7 +181,6 @@ def ensure_pom(root, rules):
       <systemPath>{ext_jar}</systemPath>
     </dependency>''')
 
-    # always include JUnit 4, the Vintage engine (for Student.TestCase) and JUnit 5
     deps.append('''
     <dependency>
       <groupId>junit</groupId>
@@ -139,91 +205,58 @@ def ensure_pom(root, rules):
     if DEBUG:
         print("Debug: dependencies XML block:", deps_xml)
 
-    # full POM with Surefire & JaCoCo (XML + HTML)
     content = f'''<project xmlns="http://maven.apache.org/POM/4.0.0"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                            http://maven.apache.org/xsd/maven-4.0.0.xsd">
-      <modelVersion>4.0.0</modelVersion>
-      <groupId>com.example</groupId>
-      <artifactId>webcat-project</artifactId>
-      <version>1.0-SNAPSHOT</version>
-      <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-      </properties>
-      <dependencies>{deps_xml}
-      </dependencies>
-      <build>
-        <plugins>
-
-          <!-- run tests -->
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <version>2.22.2</version>
-            <configuration>
-              <useModulePath>false</useModulePath>
-            </configuration>
-          </plugin>
-
-          <!-- generate coverage (XML + HTML) -->
-          <plugin>
-            <groupId>org.jacoco</groupId>
-            <artifactId>jacoco-maven-plugin</artifactId>
-            <version>0.8.5</version>
-            <executions>
-              <execution>
-                <id>prepare-agent</id>
-                <goals><goal>prepare-agent</goal></goals>
-              </execution>
-              <execution>
-                <id>report</id>
-                <phase>verify</phase>
-                <goals><goal>report</goal></goals>
-                <configuration>
-                  <formats>
-                    <format>XML</format>
-                    <format>HTML</format>
-                  </formats>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-          <!-- flat src & test directories (build-helper) -->
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <version>3.2.0</version>
-            <executions>
-              <execution>
-                <id>add-flat-src</id>
-                <phase>generate-sources</phase>
-                <goals><goal>add-source</goal></goals>
-                <configuration>
-                  <sources>
-                    <source>src</source>
-                  </sources>
-                </configuration>
-              </execution>
-              <execution>
-                <id>add-flat-test</id>
-                <phase>generate-test-sources</phase>
-                <goals><goal>add-test-source</goal></goals>
-                <configuration>
-                  <sources>
-                    <source>src</source>
-                  </sources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-        </plugins>
-      </build>
-    </project>'''
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                        http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>webcat-project</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
+  <dependencies>{deps_xml}
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.22.2</version>
+        <configuration><useModulePath>false</useModulePath></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.5</version>
+        <executions>
+          <execution><id>prepare-agent</id><goals><goal>prepare-agent</goal></goals></execution>
+          <execution>
+            <id>report</id><phase>verify</phase><goals><goal>report</goal></goals>
+            <configuration><formats><format>XML</format><format>HTML</format></formats></configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution><id>add-flat-src</id><phase>generate-sources</phase><goals><goal>add-source</goal></goals>
+            <configuration><sources><source>src</source></sources></configuration>
+          </execution>
+          <execution><id>add-flat-test</id><phase>generate-test-sources<
+phase><goals><goal>add-test-source</goal></goals>
+            <configuration><sources><source>src</source></sources></configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>'''
 
     with open(pom, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -234,7 +267,7 @@ def ensure_pom(root, rules):
 
 def parse_coverage(xmlpath):
     tree = ET.parse(xmlpath)
-    tot = {'METHOD':(0,0),'BRANCH':(0,0)}
+    tot = {'METHOD': (0, 0), 'BRANCH': (0, 0)}
     for c in tree.findall('.//counter'):
         t = c.get('type')
         if t in tot:
@@ -250,15 +283,23 @@ def split_args(s):
                 in_str, qc = True, ch
             elif qc == ch:
                 in_str = False
-            cur += ch; continue
+            cur += ch
+            continue
         if in_str:
-            cur += ch; continue
+            cur += ch
+            continue
         if ch == '(':
-            depth += 1; cur += ch; continue
+            depth += 1
+            cur += ch
+            continue
         if ch == ')':
-            depth -= 1; cur += ch; continue
+            depth -= 1
+            cur += ch
+            continue
         if ch == ',' and depth == 0:
-            parts.append(cur.strip()); cur = ''; continue
+            parts.append(cur.strip())
+            cur = ''
+            continue
         cur += ch
     if cur.strip():
         parts.append(cur.strip())
@@ -270,13 +311,38 @@ def check_file(path, rules):
     text = ''.join(lines)
     s, t = rules['style'], rules['testing']
 
+    # PACKAGE-level checks
+    pkg_match = re.search(r'^\s*package\s+[\w\.]+;', text, re.M)
+    if not pkg_match:
+        errs.append('Missing package declaration')
+    else:
+        # require @package Javadoc for nested src paths
+        rel = os.path.relpath(path)
+        if re.search(r'src{sep}.+{sep}'.format(sep=re.escape(os.sep)), rel):
+            pkg_line = text[:pkg_match.start()].count('\n') + 1
+            idx = pkg_line - 2
+            while idx >= 0 and (lines[idx].strip() == '' or lines[idx].strip().startswith('@')):
+                idx -= 1
+            prev = lines[idx].strip() if idx >= 0 else ''
+            if '@package' not in prev:
+                errs.append(f'Line {pkg_line}: missing Javadoc @package tag before package statement')
+        else:
+            pkg_line = text[:pkg_match.start()].count('\n') + 1
+            idx = pkg_line - 2
+            while idx >= 0 and lines[idx].strip() == '':
+                idx -= 1
+            if idx < 0 or '@package' not in lines[idx]:
+                errs.append(f'Line {pkg_line}: missing Javadoc @package tag before package statement')
+
     # STYLE: indentation & tabs (skip comments/javadoc)
     in_jdoc = False
     for i, ln in enumerate(lines, 1):
         st = ln.lstrip()
-        if st.startswith('/**'): in_jdoc = True
+        if st.startswith('/**'):
+            in_jdoc = True
         if in_jdoc:
-            if '*/' in st: in_jdoc = False
+            if '*/' in st:
+                in_jdoc = False
             continue
         if st.startswith('*') or st.startswith('//'):
             continue
@@ -286,8 +352,7 @@ def check_file(path, rules):
         if m:
             spc = s['indentation']['spaces_per_indent']
             if len(m.group(1)) % spc != 0:
-                errs.append(
-                  f'Line {i}: indent of {len(m.group(1))} spaces not multiple of {spc}')
+                errs.append(f'Line {i}: indent of {len(m.group(1))} spaces not multiple of {spc}')
 
     # max line length
     ml = s.get('max_line_length', -1)
@@ -298,58 +363,55 @@ def check_file(path, rules):
 
     # one public class per file
     if s.get('one_public_class_per_file'):
-        pubs = re.findall(
-          r'^\s*public\s+(?:class|interface)\s+\w+', text, re.M)
+        pubs = re.findall(r'^\s*public\s+(?:class|interface)\s+\w+', text, re.M)
         if len(pubs) > 1:
             errs.append(f'{len(pubs)} public types in one file')
 
-    # disallow static fields
-    if s.get('disallow_global_variables'):
-        for m in re.finditer(
-          r'^\s*(?:public|protected|private)?\s+static\s+\w+', text, re.M):
-            ln_no = text[:m.start()].count('\n')+1
+    # STATIC fields: disallow or enforce usage >1
+    for m in re.finditer(r'^\s*(?:public|protected|private)?\s+static\s+[\w<>\[\]]+\s+(\w+)\s*(?:=|;)', text, re.M):
+        name = m.group(1)
+        ln_no = text[:m.start()].count('\n') + 1
+        if s.get('disallow_global_variables'):
             errs.append(f'Line {ln_no}: static field not allowed')
+        else:
+            usage = len(re.findall(r'\b' + re.escape(name) + r'\b', text)) - 1
+            if usage <= 1:
+                errs.append(f'Line {ln_no}: static field "{name}" only used {usage+1} time(s)')
 
     # empty methods
     if s.get('no_empty_methods'):
         for m in re.finditer(r'\)\s*\{\s*\}', text):
-            ln_no = text[:m.start()].count('\n')+1
+            ln_no = text[:m.start()].count('\n') + 1
             errs.append(f'Line {ln_no}: empty method body')
 
     # unused private methods
     if s.get('no_unused_methods'):
-        for name in re.findall(
-          r'private\s+\w+\s+(\w+)\(', text):
+        for name in re.findall(r'private\s+\w+\s+(\w+)\(', text):
             rest = text[text.find(name):]
-            if not re.search(r'\b'+name+r'\s*\(', rest[len(name):]):
+            if not re.search(r'\b' + name + r'\s*\(', rest[len(name):]):
                 errs.append(f'unused private method "{name}"')
 
-    # STYLE: javadoc on classes & methods
+    # Javadoc on classes & methods
     if s.get('javadoc_required'):
         # classes
-        for m in re.finditer(
-          r'^\s*public\s+class\s+(\w+)', text, re.M):
+        for m in re.finditer(r'^\s*public\s+class\s+(\w+)', text, re.M):
             cn = m.group(1)
-            ln_no = text[:m.start()].count('\n')+1
+            ln_no = text[:m.start()].count('\n') + 1
             idx = ln_no - 2
-            while idx>=0 and (
-              lines[idx].strip()=='' or lines[idx].strip().startswith('@')):
-                idx-=1
-            if idx<0 or not lines[idx].strip().endswith('*/'):
+            while idx >= 0 and (lines[idx].strip() == '' or lines[idx].strip().startswith('@')):
+                idx -= 1
+            if idx < 0 or not lines[idx].strip().endswith('*/'):
                 errs.append(f'Line {ln_no}: missing JavaDoc for class {cn}')
         # methods
-        for m in re.finditer(
-          r'^\s*(public|protected)\s+\w[\w<>\[\]]*\s+(\w+)\(.*\)\s*\{',
-          text, re.M):
+        for m in re.finditer(r'^\s*(public|protected)\s+\w[\w<>\[\]]*\s+(\w+)\(.*\)\s*\{', text, re.M):
             mn = m.group(2)
-            ln_no = text[:m.start()].count('\n')+1
+            ln_no = text[:m.start()].count('\n') + 1
             if re.search(rf'public\s+class\s+{mn}\b', text):
                 continue
             idx = ln_no - 2
-            while idx>=0 and (
-              lines[idx].strip()=='' or lines[idx].strip().startswith('@')):
-                idx-=1
-            if idx<0 or not lines[idx].strip().endswith('*/'):
+            while idx >= 0 and (lines[idx].strip() == '' or lines[idx].strip().startswith('@')):
+                idx -= 1
+            if idx < 0 or not lines[idx].strip().endswith('*/'):
                 errs.append(f'Line {ln_no}: missing JavaDoc for method {mn}()')
 
     # javadoc @author/@version
@@ -364,41 +426,47 @@ def check_file(path, rules):
             if s.get('javadoc_require_version') and '@version' not in blk:
                 errs.append('JavaDoc missing @version')
 
+    # @param / @return validation
+    methods = parse_methods_and_javadoc(lines)
+    for line_no, name, params, return_type, jdoc in methods:
+        if jdoc:
+            check_javadoc_params_and_return(line_no, name, params, return_type, jdoc, errs)
+
     # TESTING checks
     if path.endswith('Test.java'):
         if t.get('annotation_required') and '@Test' not in text:
             errs.append('Missing @Test annotation')
-        # method prefix
-        prefix = t.get('test_methods_prefix','test')
-        for m in re.finditer(
-          r'^\s*public\s+void\s+(\w+)\s*\(', text, re.M):
+        prefix = t.get('test_methods_prefix', 'test')
+        for m in re.finditer(r'^\s*public\s+void\s+(\w+)\s*\(', text, re.M):
             nm = m.group(1)
-            ln_no = text[:m.start()].count('\n')+1
+            ln_no = text[:m.start()].count('\n') + 1
             if not nm.startswith(prefix):
                 errs.append(f'Line {ln_no}: test "{nm}" must start "{prefix}"')
-        # assertEquals delta
         for m in re.finditer(r'assertEquals\s*\(', text):
-            start = m.end(); depth = 1; i = start; buf = ''
-            while i<len(text) and depth>0:
+            start = m.end()
+            depth = 1
+            i = start
+            buf = ''
+            while i < len(text) and depth > 0:
                 c = text[i]
-                if c=='(': depth+=1
-                elif c==')': depth-=1
-                buf += c; i+=1
+                if c == '(':
+                    depth += 1
+                elif c == ')':
+                    depth -= 1
+                buf += c
+                i += 1
             args = split_args(buf[:-1])
-            if (t.get('require_assert_equals_delta')
-                and len(args)==2
-                and (re.search(r'\d+\.\d+',args[0])
-                     or re.search(r'\d+\.\d+',args[1]))):
-                ln_no = text[:m.start()].count('\n')+1
-                errs.append(
-                  f'Line {ln_no}: assertEquals missing delta for double')
+            if (t.get('require_assert_equals_delta') and len(args) == 2
+                and (re.search(r'\d+\.\d+', args[0]) or re.search(r'\d+\.\d+', args[1]))):
+                ln_no = text[:m.start()].count('\n') + 1
+                errs.append(f'Line {ln_no}: assertEquals missing delta for double')
 
-    # OVERRIDE enforcement (configurable)
+    # OVERRIDE enforcement unchanged...
     if s.get('require_override'):
         ext = re.search(r'public\s+class\s+\w+\s+extends\s+(\w+)', text)
         if ext:
             parent = ext.group(1)
-            root = path.split(os.sep+'src'+os.sep)[0]
+            root = path.split(os.sep + 'src' + os.sep)[0]
             sup = os.path.join(root, 'src', f'{parent}.java')
             if os.path.isfile(sup):
                 sup_txt = open(sup, encoding='utf-8').read()
@@ -418,6 +486,7 @@ def check_file(path, rules):
                             idx -= 1
                         if idx < 0 or lines[idx].strip() != '@Override':
                             errs.append(f'Line {ln_no}: missing @Override on {sig}')
+
     return errs
 
 def parse_test_reports_tree(report_dir):
@@ -465,11 +534,10 @@ def main():
     p.add_argument('--run-main', action='store_true', help='after tests, run any main()')
     p.add_argument('--external-jar', help='path to external student.jar for tests')
     p.add_argument('--debug', action='store_true', help='enable debug output')
-    p.add_argument('--version', action='version', version=__version__,
-                   help="show version and exit")
+    p.add_argument('--version', action='version', version=__version__, help="show version and exit")
     args = p.parse_args()
 
-    # Expand ~ and turn into absolute paths
+    # Expand paths
     if args.path:
         args.path = os.path.abspath(os.path.expanduser(args.path))
     if args.external_jar:
@@ -506,48 +574,45 @@ def main():
         mvn_cmd = ['mvn']
         if DEBUG:
             mvn_cmd.append('-X')
-        mvn_cmd += ['-q','clean','verify']
+        mvn_cmd += ['-q', 'clean', 'verify']
         if DEBUG:
             print("🔍 Debug: running Maven:", ' '.join(mvn_cmd))
         subprocess.run(mvn_cmd, cwd=args.path, check=True)
         if DEBUG:
             print("🔍 Debug: Maven clean verify completed")
 
-        # coverage
         rpt = os.path.join(args.path, 'target', 'site', 'jacoco', 'jacoco.xml')
         if not os.path.isfile(rpt):
             sys.exit(f'❌ Coverage report missing at {rpt}')
         miss_m, cov_m = parse_coverage(rpt)['METHOD']
         miss_b, cov_b = parse_coverage(rpt)['BRANCH']
-        cov_rules = rules['testing']
-        if cov_rules.get('require_full_method_coverage') and miss_m > 0:
-            sys.exit(f'❌ Method coverage {(cov_m/(miss_m+cov_m))*100:.1f}% <100%')
-        if cov_rules.get('require_full_branch_coverage') and miss_b > 0:
-            sys.exit(f'❌ Branch coverage {(cov_b/(miss_b+cov_b))*100:.1f}% <100%')
+        total_m = miss_m + cov_m
+        total_b = miss_b + cov_b
+        pct_m = (cov_m / total_m * 100) if total_m > 0 else 100.0
+        pct_b = (cov_b / total_b * 100) if total_b > 0 else 100.0
 
-        # pretty-print tree-style test results
         print("\n🧪 Test results:")
         tree = parse_test_reports_tree(os.path.join(args.path, 'target', 'surefire-reports'))
         suites = sorted(tree.items())
         for i, (suite, cases) in enumerate(suites):
-            suite_marker = '└─' if i==len(suites)-1 else '├─'
+            suite_marker = '└─' if i == len(suites)-1 else '├─'
             print(f"{suite_marker} {suite}")
             for j, (test, status, msg) in enumerate(cases):
-                case_marker = '└─' if j==len(cases)-1 else '├─'
+                case_marker = '└─' if j == len(cases)-1 else '├─'
                 symbol = {"PASS":"✅","FAIL":"❌","ERROR":"❌","SKIPPED":"⏭️"}[status]
                 info = f": {msg}" if msg else ""
                 print(f"    {case_marker} {test} {symbol}{info}")
 
-        # coverage summary
-        total_m = miss_m + cov_m
-        total_b = miss_b + cov_b
-        pct_m = (cov_m/total_m*100) if total_m>0 else 100
-        pct_b = (cov_b/total_b*100) if total_b>0 else 100
         print("\n📊 Coverage summary:")
         print(f"  🧩 Method coverage: {pct_m:.1f}% ({cov_m}/{total_m})")
         print(f"  🍃 Branch coverage: {pct_b:.1f}% ({cov_b}/{total_b})")
 
-        # optional main()
+        cov_rules = rules['testing']
+        if cov_rules.get('require_full_method_coverage') and pct_m < 100:
+            sys.exit(f'❌ Method coverage {pct_m:.1f}% <100%')
+        if cov_rules.get('require_full_branch_coverage') and pct_b < 100:
+            sys.exit(f'❌ Branch coverage {pct_b:.1f}% <100%')
+
         if args.run_main:
             for src in sources:
                 txt = open(src, encoding='utf-8').read()
@@ -555,8 +620,8 @@ def main():
                     cls = os.path.splitext(os.path.basename(src))[0]
                     print(f'▶️ Running main() in {cls}')
                     subprocess.run(
-                      ['java','-cp', os.path.join(args.path,'target','classes'), cls],
-                      check=False)
+                        ['java', '-cp', os.path.join(args.path, 'target', 'classes'), cls],
+                        check=False)
                     break
 
     sys.exit(1 if failed else 0)
