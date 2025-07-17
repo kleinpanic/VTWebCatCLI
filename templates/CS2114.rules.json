@@ -21,6 +21,7 @@
     "require_assert_equals_delta": true,
     "require_full_method_coverage": true,
     "require_full_branch_coverage": true
-  }
+  },
+  "external-jars": ["./student.jar"]
 }
 
