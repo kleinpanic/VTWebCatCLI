@@ -3,3 +3,4 @@
 *.~
 backups/
 student.jar
+.DS_Store
