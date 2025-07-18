@@ -65,7 +65,8 @@ jobs:
             templates \
             doc \
             README.md \
-            CHANGELOG.md
+            CHANGELOG.md \
+            LICENSE \
       shell: bash
     - name: Upload tarball to Release
       if: steps.check.outputs.exists == 'false'
