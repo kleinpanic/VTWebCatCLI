@@ -63,7 +63,7 @@ jobs:
         tar czf webcatcli-$version.tar.gz \
             WebcatCLI.py \
             templates \
-            docs \
+            doc \
             README.md \
             CHANGELOG.md
       shell: bash
