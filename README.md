@@ -74,6 +74,7 @@ WebcatCLI automates style checks, Javadoc validation, test execution, and covera
 - **Python 3.6+**  
 - **Java 8+** & **Maven** (only for `--run-tests`)  
 - Unix-style shell (for bundled `test_webcatcli.sh`)  
+    - Legacy - not needed.  
 
 ---
 
