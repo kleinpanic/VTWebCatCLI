@@ -1,1 +1,0 @@
-Add rule for global variable usage over 1 

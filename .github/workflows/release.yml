@@ -1,0 +1,76 @@
+name: 🏷️ Auto-Release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'WebcatCLI.py'
+      - 'templates/**'
+      - 'README.md'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # allow creating releases & uploading assets
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Determine current version
+      id: ver
+      run: |
+        # assume WebcatCLI.py is executable and in repo root
+        version=$(./WebcatCLI.py --version)
+        echo "version=$version" >> $GITHUB_OUTPUT
+
+    - name: See if release exists
+      id: check
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const tag = `v${{ steps.ver.outputs.version }}`;
+          try {
+            await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: tag,
+            });
+            core.setOutput("exists", "true");
+          } catch (e) {
+            if (e.status === 404) {
+              core.setOutput("exists", "false");
+            } else {
+              throw e;
+            }
+          }
+
+    - name: Create GitHub Release
+      if: steps.check.outputs.exists == 'false'
+      id: create
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.ver.outputs.version }}
+        name: v${{ steps.ver.outputs.version }}
+        body: |
+          Automated release for version ${{ steps.ver.outputs.version }}
+
+    - name: Package source tarball
+      if: steps.check.outputs.exists == 'false'
+      run: |
+        version=${{ steps.ver.outputs.version }}
+        tar czf webcatcli-$version.tar.gz \
+            WebcatCLI.py \
+            templates \
+            docs \
+            README.md \
+            CHANGELOG.md
+      shell: bash
+    - name: Upload tarball to Release
+      if: steps.check.outputs.exists == 'false'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.ver.outputs.version }}
+        files: webcatcli-${{ steps.ver.outputs.version }}.tar.gz
+

@@ -1,6 +1,37 @@
 # Changelog
 
-All notable changes to **WebcatCLI** between **v1.0.0** and **v1.1.0**.
+All the good stuff in **WebcatCLI**, from the very first drop (v1.0.0) through the current version (**v1.1.2**)
+
+---
+
+## [1.1.2] – 2025-07-17
+
+### 🎉 What’s new
+
+- **Automatic cleanup**  
+  Every generated file/dir (pom.xml, `target/`, downloaded `jacococli.jar` in `lib/`) is now tracked in a `CREATED` list and removed on exit by default.
+- **`--cleanup` flag**  
+  Forces cleanup even in debug mode (overrides the `--no-cleanup` behavior).
+- **Better debug/cleanup interplay**  
+  Debug mode still implies “no cleanup” unless you explicitly pass `--cleanup`.
+- **Ctrl-C / SIGTERM handling**  
+  Hitting Ctrl+C or receiving SIGTERM now prints “Interrupted; cleaning up…” and runs the cleanup logic before exiting.
+- **Real CLI report flow**  
+  - Incorporated the optional usage of a jacococli.jar file for xml generation
+  - Removed the placeholder `--list-uncovered` calls with the jacococli.jar.  
+  - Added `run_jacoco_cli_report()` to re-generate the XML via `jacococli.jar` and then print the coverage-gaps tree.  
+  - Updated the `--enable-cli-report` help text to match (“use jacococli.jar to regenerate XML before parsing”).
+- **Enhanced XML Parsing Logic**
+  - On Test Analysis and Branch / Method coverage analysis, when not 100%, a report is now shown detailing deficiciencies.
+  - Finalized and Enhanced Method + Branch Coverage logic to show specifics.
+  - 
+
+### 🛠 Under the hood
+
+- Refactored **cleanup()** into a centralized function, with a global `CREATED` list.  
+- `locate_or_download_jacococli()` now adds both the JAR and its `lib/` directory to `CREATED` (when appropriate).  
+- Swapped out the old `run_jacoco_list_uncovered()` and its fake `--list-uncovered` for our cleaner XML-only path.  
+- Argument parsing tweaked so that `--cleanup` always wins over `--no-cleanup`.
 
 ---
 

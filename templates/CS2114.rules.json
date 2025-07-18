@@ -10,10 +10,12 @@
     "javadoc_require_author": true,
     "javadoc_require_version": true,
     "one_public_class_per_file": true,
-    "disallow_global_variables": true,
+    "check_global_variable_usage": true,
     "no_empty_methods": true,
     "no_unused_methods": true,
-    "require_override": true
+    "require_override": true,
+    "require_package_annotation": true,
+    "require_package_javadoc": false
   },
   "testing": {
     "test_methods_prefix": "test",

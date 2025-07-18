@@ -1,0 +1,26 @@
+#compdef webcatcli
+
+_arguments \
+  '--max-line-length=[Override maximum line length]:number:' \
+  '--no-javadoc[Disable JavaDoc checks]' \
+  '--no-author[Disable @author check]' \
+  '--no-version[Disable @version check]' \
+  '--allow-globals[Skip static-field usage check]' \
+  '--allow-empty[Allow empty methods]' \
+  '--allow-unused[Allow unused private methods]' \
+  '--no-annotations[Disable @Test checks]' \
+  '--no-delta[Disable assertEquals-delta checks]' \
+  '--no-method-cov[Disable 100% method coverage]' \
+  '--no-branch-cov[Disable 100% branch coverage]' \
+  '--enable-cli-report[Download & run jacococli.jar]' \
+  '--no-override[Disable @Override enforcement]' \
+  '--run-tests[Compile & run tests via Maven]' \
+  '--run-main[Run main() after tests]' \
+  '--external-jar=[Path to external student.jar]:file:_files' \
+  '--no-package-annotation[Skip @package Javadoc tag]' \
+  '--no-package-javadoc[Do not require @package tag]' \
+  '--debug[Enable debug output]' \
+  '--no-cleanup[Preserve generated files after exit]' \
+  '--version[Show version and exit]' \
+  '*:path:_files'
+

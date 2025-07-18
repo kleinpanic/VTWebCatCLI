@@ -1,0 +1,41 @@
+.\" Manpage for webcatcli
+.TH WEBCATCLI 1 "July 2025" "WebcatCLI 1.1.2"
+.SH NAME
+webcatcli \- WebCAT-style compliance & test runner
+.SH SYNOPSIS
+.B webcatcli
+[\fIOPTIONS\fR] [\fIPATH\fR]
+.SH DESCRIPTION
+Runs coding style checks, compiles, runs tests via Maven, and enforces 100% coverage.
+By default parses the JaCoCo XML and prints any coverage gaps.
+.SH OPTIONS
+.TP
+.BR \-\-max-line-length " n"
+Override the maximum line length.
+.TP
+.BR \-\-no-javadoc
+Disable Javadoc checks.
+.TP
+.BR \-\-enable-cli-report
+Download & run jacococli.jar instead of XML-only.
+.TP
+.BR \-\-no-cleanup
+Preserve generated files/directories after exit.
+.TP
+.BR \-\-debug
+Enable debug output (implies \-\-no-cleanup).
+.TP
+.BR \-\-version
+Show version and exit.
+.SH EXAMPLES
+Run style & tests, then cleanup:
+.nf
+  webcatcli ~/myproject --run-tests
+.fi
+Print coverage gaps without downloading the CLI jar:
+.nf
+  webcatcli ~/myproject --run-tests --enable-cli-report
+.fi
+.SH AUTHOR
+kleinpanic <kleinpanic@gmail.com>
+

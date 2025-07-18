@@ -1,192 +1,193 @@
 # WebcatCLI
 
-**WebcatCLI** is a self-contained Python tool that performs preliminary Web-CAT–style checks on your Java projects before you submit. It enforces:
+## Version : 1.1.2
+
+**WebcatCLI** is a self-contained Python tool that performs Web-CAT-style pre-submission checks on your Java projects:
 
 - **Style & Formatting**  
-  - Spaces vs. tabs, configurable indentation width  
-  - Maximum line length  
-  - Javadoc presence & tags (`@author`, `@version`)  
-  - One public class/interface per file  
-  - No static (global) fields  
-  - No empty methods or unused private methods  
-  - *(Configurable)* `@Override` on all overridden methods  
-
+- **Javadoc & Annotations**  
 - **Testing Conventions**  
-  - Test-method naming prefix (default: `test`)  
-  - *(Configurable)* must use `@Test` annotations  
-  - Require three-argument `assertEquals` when comparing doubles  
-
 - **Build & Coverage**  
-  - Auto-generates a minimal `pom.xml` (JUnit 4 & JaCoCo)  
-  - `--run-tests` invokes `mvn clean test` and enforces 100% JaCoCo method & branch coverage  
-  - `--run-main` will locate and run your `main()` method after tests  
+- **Cleanup & Reporting**
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)  
-2. [Installation](#installation)  
-3. [Directory Layout](#directory-layout)  
-4. [CLI Usage & Flags](#cli-usage--flags)  
-5. [Rule Templates](#rule-templates)  
-6. [Examples](#examples)  
-7. [Running the Built-in Test Suite](#running-the-built-in-test-suite)  
-8. [License](#license)  
+1. [Overview](#overview)  
+2. [Features](#features)  
+3. [Prerequisites](#prerequisites)  
+4. [Installation](#installation)  
+5. [Directory Layout](#directory-layout)  
+6. [Quick Start](#quick-start)  
+7. [CLI Options](#cli-options)  
+8. [Rule Matrix](#rule-matrix)  
+9. [Testing](#testing)  
+10. [Contributing](#contributing)  
+11. [License](#license)  
+
+---
+
+## Overview
+
+WebcatCLI automates style checks, Javadoc validation, test execution, and coverage enforcement **before** you submit your code to a grading/CI system. It:
+
+- Generates a minimal `pom.xml` (JUnit 4 & JaCoCo) on the fly  
+- Runs `mvn clean verify` (when `--run-tests` is used)  
+- Parses JUnit test XML into a friendly tree  
+- Enforces 100% JaCoCo method & branch coverage  
+- Tracks and cleans up all generated artifacts  
+
+---
+
+## Features
+
+- **Style & Formatting**  
+  - Indentation rules (spaces vs. tabs, width)  
+  - Line-length limits  
+  - Single public class per file  
+  - Static-field usage checks  
+  - Empty / unused-method detection  
+
+- **Javadoc & Annotations**  
+  - Require Javadoc on classes & methods  
+  - Enforce `@author` / `@version` tags  
+  - Require `@Override` on overridden methods  
+  - Validate `@param` / `@return` tags  
+
+- **Testing & Coverage**  
+  - `--run-tests` → `mvn clean verify`  
+  - Tree-view of JUnit results with ✅/❌/⏭️ icons  
+  - Coverage summary and gap-tree from JaCoCo XML  
+  - `--enable-cli-report` to regenerate XML via `jacococli.jar`  
+
+- **Cleanup & Reporting**  
+  - Automatic removal of `pom.xml`, `target/`, downloaded JARs  
+  - `--no-cleanup` to preserve everything  
+  - New `--cleanup` to force cleanup even in debug mode  
+  - Ctrl-C / SIGTERM handler prints a message and cleans up  
 
 ---
 
 ## Prerequisites
 
-- **Python 3**  
-- **Java 8+** & **Maven** (for `--run-tests`)  
-- A UNIX-style shell (for the provided test script)  
+- **Python 3.6+**  
+- **Java 8+** & **Maven** (only for `--run-tests`)  
+- Unix-style shell (for bundled `test_webcatcli.sh`)  
 
 ---
 
 ## Installation
 
-1. Clone or download this repository.  
-2. In the project root, make the CLI executable:
-
 ```bash
+git clone https://github.com/your-org/WebcatCLI.git
+cd WebcatCLI
 chmod +x WebcatCLI.py
-````
-
-3. (Optional) Add it to your `PATH`:
-
-```bash
-export PATH="$PATH:/path/to/WebcatCLI"
+# (optional) add to PATH:
+export PATH="$PATH:$(pwd)"
 ```
+
+---
 
 ## Directory Layout
 
-```
+```txt
 WebcatCLI/
 ├── WebcatCLI.py
 ├── README.md
-├── test_webcatcli.sh        ← automated test harness
-└── templates/
-    ├── default.rules.json
-    ├── CS1114.rules.json
-    └── CS2114.rules.json
+├── CHANGELOG.md
+├── templates/
+│   ├── CS1114.rules.json
+│   └── CS2114.rules.json
+└── tests/                   ← (not included in pip (future) or GH releases currently (as of 1.1.2).)
+    └── test_webcatcli.sh    ← legacy test harness
 ```
 
-* **`templates/*.rules.json`**
-  Per-profile rule definitions. See below for schema.
+> **Note:** the `tests/` folder is **not** shipped in the packaged release; it lives in the repo for CI and local development.
 
 ---
 
-## CLI Usage & Flags
+## Quick Start
+
+Run style & test checks:
 
 ```bash
-./WebcatCLI.py [OPTIONS] [PROJECT_ROOT]
+./WebcatCLI.py --run-tests /path/to/my-java-project
 ```
 
-* If `PROJECT_ROOT` is omitted, reads a single Java file from **stdin**.
-* Exit codes:
-
-  * `0` — all checks passed
-  * `1` — style/test failures
-  * `>1` — internal error
-
-### Key Options
-
-| Flag                   | What it does                                                   |
-| ---------------------- | -------------------------------------------------------------- |
-| `-p, --profile <name>` | Load `templates/<name>.rules.json` (default: CS2114)           |
-| `--max-line-length N`  | Override max characters per line (`-1` disables)               |
-| `--no-javadoc`         | Skip *all* Javadoc presence checks                             |
-| `--no-author`          | Skip `@author` tag check                                       |
-| `--no-version`         | Skip `@version` tag check                                      |
-| `--allow-globals`      | Allow static (global) fields                                   |
-| `--allow-empty`        | Allow empty method bodies                                      |
-| `--allow-unused`       | Allow unused private methods                                   |
-| `--no-annotations`     | Skip checking for `@Test` annotations                          |
-| `--no-delta`           | Skip requiring delta in `assertEquals`                         |
-| `--no-method-cov`      | Disable 100% method coverage enforcement                       |
-| `--no-branch-cov`      | Disable 100% branch coverage enforcement                       |
-| `--no-override`        | Disable enforcement of `@Override` on overridden methods       |
-| `--run-tests`          | After style/test, run `mvn clean test` & parse JaCoCo coverage |
-| `--run-main`           | After tests, detect & run your `main()` entrypoint             |
-
----
-
-## Rule Templates
-
-Each JSON rule file looks like this:
-
-```jsonc
-{
-  "style": {
-    "indentation": { "use_spaces": true, "spaces_per_indent": 4 },
-    "max_line_length": 80,
-    "no_tabs": true,
-    "javadoc_required": true,
-    "javadoc_require_author": true,
-    "javadoc_require_version": true,
-    "one_public_class_per_file": true,
-    "disallow_global_variables": true,
-    "no_empty_methods": true,
-    "no_unused_methods": true,
-    "require_override": true      // NEW: whether to enforce @Override
-  },
-  "testing": {
-    "test_methods_prefix": "test",
-    "annotation_required": false,
-    "require_assert_equals_delta": true,
-    "require_full_method_coverage": true,
-    "require_full_branch_coverage": true
-  }
-}
-```
-
----
-
-## Examples
+Read a single file from stdin:
 
 ```bash
-# Basic style & test checks
-./WebcatCLI.py ~/my-java-project
-
-# Skip Javadoc & author/version checks
-./WebcatCLI.py --no-javadoc --no-author ~/my-java-project
-
-# Temporarily allow longer lines
-./WebcatCLI.py --max-line-length 200 ~/my-java-project
-
-# Enforce full coverage and run tests
-./WebcatCLI.py --run-tests ~/my-java-project
-
-# Disable @Override enforcement
-./WebcatCLI.py --no-override ~/my-java-project
+cat Foo.java | ./WebcatCLI.py
 ```
 
 ---
 
-## Running the Built-in Test Suite
+## CLI Options
 
-We include **`test_webcatcli.sh`**, a bash script that:
+| Flag                    | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `-p, --profile <name>`  | Choose `templates/<name>.rules.json` (default: CS2114)             |
+| `--max-line-length <N>` | Override maximum characters per line (`-1` to disable)             |
+| `--no-javadoc`          | Skip **all** Javadoc presence checks                               |
+| `--no-author`           | Skip `@author` tag check                                           |
+| `--no-version`          | Skip `@version` tag check                                          |
+| `--allow-globals`       | Skip static-field usage checks                                     |
+| `--allow-empty`         | Allow empty method bodies                                          |
+| `--allow-unused`        | Allow unused private methods                                       |
+| `--no-annotations`      | Skip checking for `@Test` annotations                              |
+| `--no-delta`            | Don’t require a delta in `assertEquals`                            |
+| `--no-method-cov`       | Disable 100% method coverage enforcement                           |
+| `--no-branch-cov`       | Disable 100% branch coverage enforcement                           |
+| `--no-override`         | Don’t enforce `@Override` on overridden methods                    |
+| `--run-tests`           | After style/test, run `mvn clean verify` and parse coverage        |
+| `--run-main`            | After tests (and coverage), detect & run any `main()` method       |
+| `--enable-cli-report`   | Download/run `jacococli.jar` to regenerate XML before parsing gaps |
+| `--no-cleanup`          | Preserve generated files & directories on exit                     |
+| `--cleanup`             | Force cleanup even in debug mode (overrides `--no-cleanup`)        |
+| `-h, --help`            | Show usage and exit                                                |
+| `--version`             | Print version (`__version__`) and exit                             |
 
-1. **Creates** a temporary Java project with both “good” and “bad” example files.
-2. **Exercises** all CLI flags (`--no-javadoc`, `--no-override`, coverage flags, etc.).
-3. **Validates** exit codes and expected output.
+---
 
-### To run it:
+## Rule Matrix
+
+| Rule                                 |        Default        | Configurable | Change via                          |
+| ------------------------------------ | :-------------------: | :----------: | ----------------------------------- |
+| **Indentation: spaces per indent**   |        4 spaces       |      Yes     | JSON template / `--max-line-length` |
+| **Use spaces (no tabs)**             |           ✔️          |      Yes     | JSON template                       |
+| **Max line length**                  |        80 chars       |      Yes     | `--max-line-length`, JSON           |
+| **Javadoc required (class/method)**  |           ✔️          |      Yes     | `--no-javadoc`, JSON                |
+| **`@author` required**               |           ✔️          |      Yes     | `--no-author`, JSON                 |
+| **`@version` required**              |           ✔️          |      Yes     | `--no-version`, JSON                |
+| **One public class/file**            |          ✔️           |     Yes      | JSON                                |
+| **Static-field usage**               | ✔️ (abiity to change) |     Yes      | `--allow-globals`, JSON             |
+| **Empty-method detection**           |          ✔️           |     Yes      | `--allow-empty`, JSON               |
+| **Unused-private-method detection**  |           ✔️          |      Yes     | `--allow-unused`, JSON              |
+| **`@Override` enforcement**          |           ✔️          |      Yes     | `--no-override`, JSON               |
+| **Package Javadoc (`@package`)**     |           ✔️          |      Yes     | `--no-package-annotation`, JSON     |
+| **Require preceding `@package` tag** |           ❌           |      Yes     | `--no-package-javadoc`, JSON        |
+| **Test prefix**                      |         `test`        |      Yes     | JSON                                |
+| **`@Test` annotation required**      |           ❌           |      Yes     | `--no-annotations`, JSON            |
+| **Delta in `assertEquals`**          |           ✔️          |      Yes     | `--no-delta`, JSON                  |
+| **100% method coverage**             |           ✔️          |      Yes     | `--no-method-cov`, JSON             |
+| **100% branch coverage**             |           ✔️          |      Yes     | `--no-branch-cov`, JSON             |
+
+---
+
+## Testing
+
+I’ve moved the old `test_webcatcli.sh` into `tests/` for historical coverage. It:
+
+1. Creates minimal Java projects (good & bad cases).
+2. Verifies that every flag behaves as expected.
+3. Ensures legacy behavior never regresses.
+
+> **Note:** the `tests/` folder is **not** part of the release tar—developers can clone the repo and run:
+> **Note**: The Test Program Does Not Respect or Consider the JSON configurations when creating and applying these tests. Needs to be updated for next release.
 
 ```bash
-# From the directory containing WebcatCLI.py:
+cd tests
 chmod +x test_webcatcli.sh
 ./test_webcatcli.sh
 ```
-
-* A successful run ends with:
-
-  ```
-  🎉 All tests passed!
-  ```
-
-* If any check fails, the script will stop and print an error message pointing to the failed scenario.
-
-Feel free to inspect or extend `test_webcatcli.sh` to cover additional edge cases in your workflow.
-
