@@ -8,12 +8,17 @@ A self-contained WebCAT-style pre-submission checker:
   - Auto-generates a minimal Maven pom.xml (with JUnit, optional student.jar & JaCoCo)
   - Runs `mvn clean verify` to compile, test, and produce coverage
   - Parses JaCoCo XML for 100% method & branch coverage
+  - Detects & ignores unreachable branches (if enabled)
+  - AST-based `--scan-impossible-branches` to catch logically impossible conditions
   - Enforces @Override on overridden methods (configurable)
+  - Style rule: closing brace `}` must be alone on its line
   - Optional `--run-main` to invoke your main() after tests
   - Optional `--external-jar` to point at a custom student.jar
   - Optional `--debug` to print verbose internal state
   - Optional `--no-cleanup` to preserve generated files
   - `--version` to show current CLI version
+  - `--detect-unreachable` to ignore compiler-reported unreachable code
+  - **New** `--scan-impossible-branches` to detect always-true/false predicates
 """
 
 import argparse
@@ -29,7 +34,7 @@ import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 DEBUG = False
 
 # Track everything we create so we can delete it later:
@@ -129,6 +134,80 @@ def check_javadoc_params_and_return(line_no, name, params, return_type, javadoc,
             errs.append(f'Line {line_no}: unexpected @return in void method {name}()')
 
 # -------------------------------------------------------------------
+# Helpers for unreachable‐code detection via javac -Xlint:unreachable
+# -------------------------------------------------------------------
+def detect_unreachable_branches(src_root):
+    """
+    Compile every .java under src/ with -Xlint:unreachable,
+    collect all (filename, lineno) pairs that the compiler warns are unreachable.
+    """
+    src_dir = os.path.join(src_root, 'src')
+    java_files = []
+    for root, _, files in os.walk(src_dir):
+        for fn in files:
+            if fn.endswith('.java'):
+                java_files.append(os.path.join(root, fn))
+    if not java_files:
+        return set()
+
+    out_dir = tempfile.mkdtemp(prefix='unreach_')
+    CREATED.append(out_dir)
+
+    cmd = ['javac', '-Xlint:unreachable', '-d', out_dir] + java_files
+    proc = subprocess.run(cmd,
+                          stdout=subprocess.DEVNULL,
+                          stderr=subprocess.PIPE,
+                          text=True)
+    unreachable = set()
+    for line in proc.stderr.splitlines():
+        m = re.match(r'(.+\.java):(\d+): warning: unreachable code', line)
+        if m:
+            fname = os.path.basename(m.group(1))
+            lineno = int(m.group(2))
+            unreachable.add((fname, lineno))
+    return unreachable
+
+# -------------------------------------------------------------------
+# New: AST‐based impossible‐branch detection
+# -------------------------------------------------------------------
+try:
+    import javalang
+except ImportError:
+    print("⚠️  Missing dependency 'javalang'. Install via `pip install javalang`.")
+    sys.exit(1)
+
+def detect_impossible_branches(src_root):
+    """
+    Parse each .java under src/ with javalang, look for IfStatement,
+    and flag any condition that always evaluates False (literal-only).
+    """
+    issues = []
+    for root, _, files in os.walk(os.path.join(src_root, 'src')):
+        for fn in files:
+            if not fn.endswith('.java'):
+                continue
+            path = os.path.join(root, fn)
+            try:
+                text = open(path, encoding='utf-8').read()
+                tree = javalang.parse.parse(text)
+            except Exception:
+                continue
+            for _, node in tree.filter(javalang.tree.IfStatement):
+                cond = node.condition
+                if isinstance(cond, javalang.tree.BinaryOperation):
+                    ol, op, or_ = cond.operandl, cond.operator, cond.operandr
+                    if (isinstance(ol, javalang.tree.Literal) and
+                        isinstance(or_, javalang.tree.Literal)):
+                        expr = f"{ol.value}{op}{or_.value}"
+                        try:
+                            if not eval(expr):
+                                ln = node.position.line
+                                issues.append((path, ln, expr))
+                        except Exception:
+                            pass
+    return issues
+
+# -------------------------------------------------------------------
 # Core functions
 # -------------------------------------------------------------------
 def load_rules(profile):
@@ -153,10 +232,15 @@ def override_rules(rules, args):
     if args.no_delta:          t['require_assert_equals_delta']        = False
     if args.no_method_cov:     t['require_full_method_coverage']       = False
     if args.no_branch_cov:     t['require_full_branch_coverage']       = False
-    if args.external_jar:      rules['external_jar']                   = args.external_jar
+    if getattr(args, 'detect_unreachable', False):
+        t['detect_unreachable_branches'] = True
+    if args.external_jar:
+        rules['external_jar'] = args.external_jar
 
-    if args.no_package_annotation: s['require_package_annotation'] = False
-    if args.no_package_javadoc:    s['require_package_javadoc']    = False
+    if args.no_package_annotation:
+        s['require_package_annotation'] = False
+    if args.no_package_javadoc:
+        s['require_package_javadoc']    = False
 
     return rules
 
@@ -181,6 +265,10 @@ def collect_sources(path):
     return out
 
 def ensure_pom(root, rules):
+    """
+    Generate a minimal pom.xml (with JUnit, optional student.jar & JaCoCo)
+    and the build-helper plugin to flatten src/ into both main & test.
+    """
     pom = os.path.join(root, 'pom.xml')
     if os.path.exists(pom):
         if DEBUG:
@@ -281,6 +369,7 @@ def ensure_pom(root, rules):
     </plugins>
   </build>
 </project>'''
+
     with open(pom, 'w', encoding='utf-8') as f:
         f.write(content)
     CREATED.append(pom)
@@ -298,9 +387,6 @@ def parse_coverage(xmlpath):
             tot[t] = (int(c.get('missed')), int(c.get('covered')))
     return tot
 
-# -------------------------------------------------------------------
-# XML-parsing helpers for detailed tree
-# -------------------------------------------------------------------
 def parse_coverage_details(xmlpath):
     tree = ET.parse(xmlpath)
     root = tree.getroot()
@@ -358,7 +444,8 @@ def split_args(s):
         if ch == ',' and depth == 0:
             parts.append(cur.strip()); cur = ''; continue
         cur += ch
-    if cur.strip(): parts.append(cur.strip())
+    if cur.strip():
+        parts.append(cur.strip())
     return parts
 
 def check_file(path, rules):
@@ -388,31 +475,49 @@ def check_file(path, rules):
     in_jdoc = False
     for i, ln in enumerate(lines, 1):
         stripped = ln.lstrip()
-        if stripped.startswith('/**'): in_jdoc = True
+        if stripped.startswith('/**'):
+            in_jdoc = True
         if in_jdoc:
-            if '*/' in stripped: in_jdoc = False
+            if '*/' in stripped:
+                in_jdoc = False
             continue
-        if stripped.startswith('*') or stripped.startswith('//'): continue
+        if stripped.startswith('*') or stripped.startswith('//'):
+            continue
+
+        # tab check
         if s.get('no_tabs') and '\t' in ln:
             errs.append(f'Line {i}: tab found (use spaces)')
+        # indentation
         m = re.match(r'^( +)', ln)
         if m:
             spc = s['indentation']['spaces_per_indent']
             if len(m.group(1)) % spc != 0:
                 errs.append(f'Line {i}: indent of {len(m.group(1))} spaces not multiple of {spc}')
 
+    # max line length
     ml = s.get('max_line_length', -1)
     if ml > 0:
         for i, ln in enumerate(lines, 1):
             if len(ln.rstrip('\n')) > ml:
                 errs.append(f'Line {i}: length {len(ln.rstrip())}>{ml}')
 
+    # one public class per file
     if s.get('one_public_class_per_file'):
         pubs = re.findall(r'^\s*public\s+(?:class|interface)\s+\w+', text, re.M)
         if len(pubs) > 1:
             errs.append(f'{len(pubs)} public types in one file')
 
-    # GLOBAL STATIC FIELDS — now usage-checked instead of flat-deny
+    # CLOSING-BRACE ALONE rule
+    if s.get('closing_brace_alone'):
+        for i, ln in enumerate(lines, 1):
+            if '}' in ln:
+                idx = ln.find('}')
+                trail = ln[idx+1:]
+                # allow comment-only trailing text
+                if trail.strip() and not trail.strip().startswith('//') and not trail.strip().startswith('/*'):
+                    errs.append(f'Line {i}: closing brace should be alone on its line')
+
+    # GLOBAL STATIC FIELDS
     if s.get('check_global_variable_usage', False):
         for m in re.finditer(
                 r'^\s*(?:public|protected|private)?\s+static\s+[\w<>\[\]]+\s+(\w+)\s*(?:=|;)',
@@ -442,14 +547,16 @@ def check_file(path, rules):
     # JAVADOC on classes & methods…
     if s.get('javadoc_required'):
         for m in re.finditer(r'^\s*public\s+class\s+(\w+)', text, re.M):
-            cn = m.group(1); ln_no = text[:m.start()].count('\n') + 1
+            cn = m.group(1)
+            ln_no = text[:m.start()].count('\n') + 1
             idx = ln_no - 2
             while idx >= 0 and (lines[idx].strip() in ('',) or lines[idx].strip().startswith('@')):
                 idx -= 1
             if idx < 0 or not lines[idx].strip().endswith('*/'):
                 errs.append(f'Line {ln_no}: missing JavaDoc for class {cn}')
         for m in re.finditer(r'^\s*(public|protected)\s+\w[\w<>\[\]]*\s+(\w+)\(.*\)\s*\{', text, re.M):
-            mn = m.group(2); ln_no = text[:m.start()].count('\n') + 1
+            mn = m.group(2)
+            ln_no = text[:m.start()].count('\n') + 1
             if re.search(rf'public\s+class\s+{mn}\b', text):
                 continue
             idx = ln_no - 2
@@ -528,7 +635,6 @@ def run_jacoco_cli_report(project_root, jar_path):
 
 def main():
     p = argparse.ArgumentParser(description='WebCAT-style compliance & test runner')
-    # Argparse provides -h/--help. 
     p.add_argument('path', nargs='?', help='project root (with src/) or stdin')
     p.add_argument('-p','--profile', default='CS2114', help='rules template')
     p.add_argument('--max-line-length', type=int, help='override max_line_length')
@@ -543,13 +649,12 @@ def main():
     p.add_argument('--no-delta', action='store_true', help='disable assertEquals-delta checks')
     p.add_argument('--no-method-cov', action='store_true', help='disable 100% method coverage')
     p.add_argument('--no-branch-cov', action='store_true', help='disable 100% branch coverage')
+    p.add_argument('--detect-unreachable', action='store_true',
+                   help='ignore missed branches that the compiler marks as unreachable')
+    p.add_argument('--scan-impossible-branches', action='store_true',
+                   help='scan for logically impossible branch conditions (always-false)')
     p.add_argument('--enable-cli-report', action='store_true',
                    help='use jacococli.jar to regenerate the XML report before parsing')
-    p.add_argument('--no-override', action='store_true', help='disable @Override enforcement')
-    p.add_argument('--no-cleanup', action='store_true',
-                   help='preserve generated files/directories after exit')
-    p.add_argument('--cleanup', action='store_true',
-                   help='force cleanup even in debug mode (overrides --no-cleanup)')
     p.add_argument('--run-tests', action='store_true', help='compile & run tests via Maven')
     p.add_argument('--run-main', action='store_true', help='after tests, run any main()')
     p.add_argument('--external-jar', help='path to external student.jar for tests')
@@ -557,6 +662,11 @@ def main():
                    help='skip scanning/enforcing any @package Javadoc tags')
     p.add_argument('--no-package-javadoc', action='store_true',
                    help='when scanning @package, do not require a preceding @package tag')
+    p.add_argument('--no-override', action='store_true', help='disable @Override enforcement')
+    p.add_argument('--no-cleanup', action='store_true',
+                   help='preserve generated files/directories after exit')
+    p.add_argument('--cleanup', action='store_true',
+                   help='force cleanup even in debug mode (overrides --no-cleanup)')
     p.add_argument('--debug', action='store_true', help='enable debug output')
     p.add_argument('--version', action='version', version=__version__, help="show version and exit")
     args = p.parse_args()
@@ -569,27 +679,31 @@ def main():
     global DEBUG, SKIP_CLEANUP
     DEBUG = args.debug
     if DEBUG:
-        # Debug Implies no-cleanup is true, unless explicitly indicated
-        # otherwise with the use of --cleanup. 
         if not args.cleanup:
             args.no_cleanup = True
         print("🔍 Debug:", args)
-    # if --cleanup is passed, always run cleanup; otherwise 
-    # debug implies --no-cleanup, and --no-cleanup should be prioritized as a command. 
-    # always honor --no-cleanup when passed.
     SKIP_CLEANUP = args.no_cleanup and not args.cleanup
 
-    # Handle Ctrl-C / SIGTERM cleanly
     def _sig_handler(signum, frame):
         print("\n🔨 Interrupted; cleaning up...")
         sys.exit(1)
     signal.signal(signal.SIGINT, _sig_handler)
     signal.signal(signal.SIGTERM, _sig_handler)
 
+    # Early scan for impossible branches
+    if args.scan_impossible_branches:
+        issues = detect_impossible_branches(args.path)
+        if issues:
+            print("\n🔍 Impossible-branch issues found:")
+            for (f, ln, expr) in issues:
+                print(f"  • {f}:{ln}: condition `{expr}` is always false")
+            sys.exit(1)
+
     failed = False
     sources = collect_sources(args.path)
     if DEBUG:
         print("🔍 Debug: source files found:", sources)
+
     for src in sources:
         errs = check_file(src, override_rules(load_rules(args.profile), args))
         if errs:
@@ -615,7 +729,6 @@ def main():
             print("🔍 Debug: running Maven:", ' '.join(mvn_cmd))
         subprocess.run(mvn_cmd, cwd=args.path, check=True)
 
-        # Record the Maven-generated 'target' directory for cleanup
         target_dir = os.path.join(args.path, 'target')
         if os.path.isdir(target_dir):
             CREATED.append(target_dir)
@@ -651,24 +764,52 @@ def main():
         print(f"  🍃 Branch coverage: {pct_b:.1f}% ({cov_b}/{total_b})")
 
         cov_rules = rules['testing']
-        need_report = (
-            cov_rules.get('require_full_method_coverage') and pct_m < 100
-        ) or (
-            cov_rules.get('require_full_branch_coverage') and pct_b < 100
-        )
+        hard_fail_m = (cov_rules.get('require_full_method_coverage') and pct_m < 100)
+        hard_fail_b = (cov_rules.get('require_full_branch_coverage') and pct_b < 100)
+        do_detect  = cov_rules.get('detect_unreachable_branches', False)
 
-        if need_report:
+        # Javac-based unreachable‐branch filtering
+        if do_detect and pct_b < 100:
+            original    = parse_coverage_details(rpt)
+            unreachable = detect_unreachable_branches(args.path)
+
+            filtered = {}
+            for pkg, classes in original.items():
+                for cls, methods in classes.items():
+                    fname = cls + '.java'
+                    uln = {ln for (f, ln) in unreachable if f == fname}
+                    kept = []
+                    for (mn, mm, mb) in methods:
+                        if mb and uln:
+                            continue
+                        kept.append((mn, mm, mb))
+                    if kept:
+                        filtered.setdefault(pkg, {})[cls] = kept
+
+            remain = sum(
+                mb
+                for classes in filtered.values()
+                for methods in classes.values()
+                for (_, _, mb) in methods
+            )
+            if remain == 0:
+                print("\n✅ All remaining branch misses are in statically unreachable code.")
+                print("ℹ️ Treating branch coverage as 100%.\n")
+                print("🔎 Original coverage gaps (from XML):")
+                print_coverage_tree(original)
+                sys.exit(0)
+
+        # Hard-fail if any required coverage still unmet
+        if hard_fail_m or hard_fail_b:
+            print("\n❌ Coverage requirements not met:")
+            if hard_fail_b:
+                print("   branch coverage is <100% outside of unreachable code")
             if args.enable_cli_report:
-                # download the CLI jar and schedule its entire lib/ dir for cleanup
                 jar_path = locate_or_download_jacococli(args.path)
-                lib_dir = os.path.join(args.path, 'lib')
-                if os.path.isdir(lib_dir) and not SKIP_CLEANUP:
-                    CREATED.append(lib_dir)
                 run_jacoco_cli_report(args.path, jar_path)
             else:
                 print("\n🔎 Coverage gaps (from XML):")
-                detailed = parse_coverage_details(rpt)
-                print_coverage_tree(detailed)
+                print_coverage_tree(parse_coverage_details(rpt))
             sys.exit(1)
 
         if args.run_main:

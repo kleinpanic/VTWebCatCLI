@@ -1,6 +1,6 @@
 # WebcatCLI
 
-## Version : 1.1.2
+## Version : 1.1.3
 
 **WebcatCLI** is a self-contained Python tool that performs Web-CAT-style pre-submission checks on your Java projects:
 

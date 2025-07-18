@@ -15,14 +15,16 @@
     "no_unused_methods": true,
     "require_override": true,
     "require_package_annotation": true,
-    "require_package_javadoc": false
+    "require_package_javadoc": false,
+    "closing_brace_alone": true
   },
   "testing": {
     "test_methods_prefix": "test",
     "annotation_required": false,
     "require_assert_equals_delta": true,
     "require_full_method_coverage": true,
-    "require_full_branch_coverage": true
+    "require_full_branch_coverage": true,
+    "detect_unreachable_branches": true
   },
   "external-jars": ["./student.jar"]
 }

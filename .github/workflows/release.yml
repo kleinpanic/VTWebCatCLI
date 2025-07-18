@@ -67,6 +67,7 @@ jobs:
             README.md \
             CHANGELOG.md \
             LICENSE \
+            requirements.txt \
       shell: bash
     - name: Upload tarball to Release
       if: steps.check.outputs.exists == 'false'
