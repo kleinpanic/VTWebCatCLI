@@ -4,6 +4,34 @@ All the good stuff in **WebcatCLI**, from the very first drop (v1.0.0) through t
 
 ---
 
+## [1.1.3] – 2025-07-18
+
+### 🎉 What’s New
+- AST-based Impossible Branch Detection
+    Added new --scan-impossible-branches flag, leveraging the javalang library to parse Java source files and detect logically impossible (always true/false) branch conditions. This helps to quickly identify unreachable code paths before coverage analysis.
+- **runtime-compilation im**
+
+### ⚠️ Important Notices
+- **Optional Dependency (javalang)**
+    The new impossible branch detection feature requires the javalang Python library. Install it via:
+```bash
+pip install javalang
+```
+The dependency check now runs only when the --scan-impossible-branches flag is invoked, preventing unnecessary errors if the flag is not used.
+
+### 📖 Documentation Improvements
+- **Updated README.md to clearly document:**
+    - New CLI option (--scan-impossible-branches)
+    - The optional dependency on javalang
+    - Adjusted prerequisites to clarify optional installation steps
+
+### 🛠 Under the Hood Improvements
+- **Lazy Loading of Optional Dependencies**
+    Moved the import check for javalang within the conditional execution path of the --scan-impossible-branches feature, eliminating dependency warnings or errors when not using this feature.
+    Improved CLI Help Messages
+    Enhanced argument parser help text for new flags to ensure clarity and usability.
+
+
 ## [1.1.2] – 2025-07-17
 
 ### 🎉 What’s new

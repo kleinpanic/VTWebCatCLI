@@ -167,20 +167,16 @@ def detect_unreachable_branches(src_root):
             unreachable.add((fname, lineno))
     return unreachable
 
-# -------------------------------------------------------------------
-# New: AST‐based impossible‐branch detection
-# -------------------------------------------------------------------
-try:
-    import javalang
-except ImportError:
-    print("⚠️  Missing dependency 'javalang'. Install via `pip install javalang`.")
-    sys.exit(1)
-
 def detect_impossible_branches(src_root):
     """
     Parse each .java under src/ with javalang, look for IfStatement,
     and flag any condition that always evaluates False (literal-only).
     """
+    try:
+        import javalang
+    except ImportError:
+        print("⚠️  Missing dependency 'javalang'. Install via `pip install javalang`.")
+        sys.exit(1)
     issues = []
     for root, _, files in os.walk(os.path.join(src_root, 'src')):
         for fn in files:

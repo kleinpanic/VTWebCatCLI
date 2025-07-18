@@ -60,6 +60,8 @@ WebcatCLI automates style checks, Javadoc validation, test execution, and covera
   - Tree-view of JUnit results with ✅/❌/⏭️ icons  
   - Coverage summary and gap-tree from JaCoCo XML  
   - `--enable-cli-report` to regenerate XML via `jacococli.jar`  
+  - `--scan-impossible-branches`: scans Java source files to detect logically impossible branch conditions (predicates that always evaluate to true or false) via AST analysis.
+
 
 - **Cleanup & Reporting**  
   - Automatic removal of `pom.xml`, `target/`, downloaded JARs  
@@ -72,6 +74,8 @@ WebcatCLI automates style checks, Javadoc validation, test execution, and covera
 ## Prerequisites
 
 - **Python 3.6+**  
+- **Testing & Coverage**  
+  - `--scan-impossible-branches`: scans Java source files to detect logically impossible branch conditions (predicates that always evaluate to true or false) via AST analysis.
 - **Java 8+** & **Maven** (only for `--run-tests`)  
 - Unix-style shell (for bundled `test_webcatcli.sh`)  
     - Legacy - not needed.  
