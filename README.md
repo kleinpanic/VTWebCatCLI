@@ -196,3 +196,28 @@ cd tests
 chmod +x test_webcatcli.sh
 ./test_webcatcli.sh
 ```
+
+--- 
+
+## License
+
+### WebcatCLI
+WebcatCLI itself is distributed under the [MIT License](LICENSE).
+
+### Bundled Dependencies
+This repository distributes **student.jar** and **jacococli.jar** as part of the `--run-tests` workflow. You must comply with their licenses:
+
+For the student.jar license file please unpackage the .jar file and find it yourself. 
+Or open the licenses dir
+
+- **Student-Library** (`student.jar`)  
+  Licensed under the GNU Lesser General Public License v2.1.  
+
+- **JUnit** (via Maven dependencies bundled in the generated POM)  
+  Portions of JUnit are under the Eclipse Public License 1.0.  
+
+- **JaCoCo CLI** (`jacococli.jar`)  
+  Licensed under the Apache License 2.0.  
+
+By distributing these JARs you agree to the terms of their respective licenses.
+

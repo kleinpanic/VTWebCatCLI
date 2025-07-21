@@ -33,6 +33,7 @@ import sys
 import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 __version__ = "1.1.3"
 DEBUG = False
@@ -41,6 +42,18 @@ DEBUG = False
 CREATED = []
 # Flip to True when we should skip cleanup (debug or --no-cleanup)
 SKIP_CLEANUP = False
+
+# Helper to expand/resolve any path on macOS, Linux or Windows
+def normalize_path(pth):
+    """
+    Use pathlib to expand user (~), resolve relative symlinks, and
+    return a consistently formatted string, regardless of platform.
+    """
+    try:
+        p = Path(pth).expanduser().resolve()
+    except Exception:
+        p = Path(pth)
+    return str(p)
 
 def cleanup():
     """Delete any files or directories we recorded in CREATED."""
@@ -643,8 +656,8 @@ def main():
     p.add_argument('--allow-unused', action='store_true', help='allow unused private methods')
     p.add_argument('--no-annotations', action='store_true', help='disable @Test checks')
     p.add_argument('--no-delta', action='store_true', help='disable assertEquals-delta checks')
-    p.add_argument('--no-method-cov', action='store_true', help='disable 100% method coverage')
-    p.add_argument('--no-branch-cov', action='store_true', help='disable 100% branch coverage')
+    p.add_argument('--no-method-cov', action='store_true', help='disable 100%% method coverage')
+    p.add_argument('--no-branch-cov', action='store_true', help='disable 100%% branch coverage')
     p.add_argument('--detect-unreachable', action='store_true',
                    help='ignore missed branches that the compiler marks as unreachable')
     p.add_argument('--scan-impossible-branches', action='store_true',
@@ -667,10 +680,19 @@ def main():
     p.add_argument('--version', action='version', version=__version__, help="show version and exit")
     args = p.parse_args()
 
+    # if no path and nothing piped in, show help instead of blocking on stdin.read()
+    if not args.path and sys.stdin.isatty():
+        p.print_help()
+        sys.exit(0)
+
     if args.path:
-        args.path = os.path.abspath(os.path.expanduser(args.path))
+        #args.path = os.path.abspath(os.path.expanduser(args.path))
+        args.path = normalize_path(args.path)
+
     if args.external_jar:
-        args.external_jar = os.path.abspath(os.path.expanduser(args.external_jar))
+        #args.external_jar = os.path.abspath(os.path.expanduser(args.external_jar))
+        args.path = normalize_path(args.path)
+
 
     global DEBUG, SKIP_CLEANUP
     DEBUG = args.debug
@@ -717,7 +739,93 @@ def main():
         rules = override_rules(load_rules(args.profile), args)
         ensure_pom(args.path, rules)
 
-        mvn_cmd = ['mvn']
+        # ---------------- robust Maven lookup ----------------
+        def find_mvn():
+            # 1) on your PATH?
+            exe = shutil.which('mvn')
+            if exe:
+                return exe
+
+            # 2) M2_HOME / MAVEN_HOME
+            for ev in ('M2_HOME','MAVEN_HOME'):
+                home = os.environ.get(ev)
+                if home:
+                    cand = os.path.join(home, 'bin',
+                                        'mvn.cmd' if os.name=='nt' else 'mvn')
+                    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                        return cand
+
+            # 3) Chocolatey default
+            if os.name == 'nt':
+                choco = r"C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.10\bin\mvn.cmd"
+                if os.path.isfile(choco) and os.access(choco, os.X_OK):
+                    return choco
+                # also glob any manual installs under Program Files*
+                for base in (os.environ.get('ProgramFiles'),
+                             os.environ.get('ProgramFiles(x86)')):
+                    if base:
+                        pattern = os.path.join(base, 'apache-maven*', 'bin', 'mvn.cmd')
+                        for cand in glob.glob(pattern):
+                            if os.access(cand, os.X_OK):
+                                return cand
+
+            # 4) Linux package managers
+            if os.name == 'posix' and shutil.which('sudo'):
+                # Debian/Ubuntu
+                if shutil.which('apt-get'):
+                    try:
+                        subprocess.run(['sudo','apt-get','update'], check=True,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        subprocess.run(['sudo','apt-get','install','-y','maven'], check=True)
+                        exe2 = shutil.which('mvn')
+                        if exe2:
+                            return exe2
+                    except subprocess.CalledProcessError:
+                        pass
+                # Arch Linux
+                if shutil.which('pacman'):
+                    try:
+                        subprocess.run(['sudo','pacman','-Sy','--noconfirm','maven'], check=True)
+                        exe3 = shutil.which('mvn')
+                        if exe3:
+                            return exe3
+                    except subprocess.CalledProcessError:
+                        pass
+
+            # 5) macOS Homebrew
+            brew = shutil.which('brew')
+            if brew:
+                try:
+                    prefix = subprocess.check_output(
+                        [brew, '--prefix', 'maven'],
+                        stderr=subprocess.DEVNULL, text=True
+                    ).strip()
+                    cand = os.path.join(prefix, 'bin', 'mvn')
+                    if os.access(cand, os.X_OK):
+                        return cand
+                except subprocess.CalledProcessError:
+                    pass
+                # maybe already linked?
+                exe2 = shutil.which('mvn')
+                if exe2:
+                    return exe2
+                # install it
+                print("⬇️  Installing Maven via Homebrew…", file=sys.stderr)
+                try:
+                    subprocess.run([brew, 'install', 'maven'], check=True)
+                except subprocess.CalledProcessError:
+                    sys.exit("❌ Failed to install Maven via Homebrew.")
+                exe3 = shutil.which('mvn')
+                if exe3:
+                    return exe3
+
+            return None
+
+        mvn_exe = find_mvn()
+        if not mvn_exe:
+            sys.exit("❌ Error: Maven executable not found. "
+                     "Please install Maven or add it to your PATH.")
+        mvn_cmd = [mvn_exe]
         if DEBUG:
             mvn_cmd.append('-X')
         mvn_cmd += ['-q', 'clean', 'verify']

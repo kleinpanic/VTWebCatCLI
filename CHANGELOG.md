@@ -4,6 +4,12 @@ All the good stuff in **WebcatCLI**, from the very first drop (v1.0.0) through t
 
 ---
 
+## [1.1.3] - 2025-07-21
+
+### Patch
+- Added more support for windows systems in the form of normalizing the path and by more indepth approach to find MVN dependencies.
+- included the packaging of the student.jar
+
 ## [1.1.3] – 2025-07-18
 
 ### 🎉 What’s New

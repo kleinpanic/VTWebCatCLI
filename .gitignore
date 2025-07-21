@@ -2,6 +2,5 @@
 *.old
 *.~
 backups/
-student.jar
 .DS_Store
 venv/
