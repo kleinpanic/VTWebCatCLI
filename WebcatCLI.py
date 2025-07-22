@@ -519,11 +519,17 @@ def check_file(path, rules):
     # CLOSING-BRACE ALONE rule
     if s.get('closing_brace_alone'):
         for i, ln in enumerate(lines, 1):
+            stripped = ln.lstrip()
+            # skip any comment or Javadoc line entirely
+            if stripped.startswith('//') or stripped.startswith('/*') \
+               or stripped.startswith('*')  or stripped.startswith('*/'):
+                continue
             if '}' in ln:
-                idx = ln.find('}')
+                idx   = ln.find('}')
                 trail = ln[idx+1:]
                 # allow comment-only trailing text
-                if trail.strip() and not trail.strip().startswith('//') and not trail.strip().startswith('/*'):
+                if trail.strip() and not trail.strip().startswith('//') \
+                               and not trail.strip().startswith('/*'):
                     errs.append(f'Line {i}: closing brace should be alone on its line')
 
     # GLOBAL STATIC FIELDS
