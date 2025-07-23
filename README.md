@@ -1,6 +1,6 @@
 # WebcatCLI
 
-## Version : 1.1.3
+## Version : 1.1.4
 
 **WebcatCLI** is a self-contained Python tool that performs Web-CAT-style pre-submission checks on your Java projects:
 
@@ -150,6 +150,7 @@ cat Foo.java | ./WebcatCLI.py
 | `--enable-cli-report`   | Download/run `jacococli.jar` to regenerate XML before parsing gaps |
 | `--no-cleanup`          | Preserve generated files & directories on exit                     |
 | `--cleanup`             | Force cleanup even in debug mode (overrides `--no-cleanup`)        |
+| `--delete-modules-info` | Recursivly finds + deletes modules.info files under project root   |
 | `-h, --help`            | Show usage and exit                                                |
 | `--version`             | Print version (`__version__`) and exit                             |
 

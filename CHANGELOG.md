@@ -4,6 +4,17 @@ All the good stuff in **WebcatCLI**, from the very first drop (v1.0.0) through t
 
 ---
 
+## [1.1.4] - 2025-07-23
+
+### Patch and New Release
+- No longer using os for system calls. Should be more robust with other OSs. Uses pathlib. Helper normalize_path() now returns a resolved `path` as a string.
+- Wrapped maven invocation in a try / except command to better handle failure on edge cases I havent accounted for yet. 
+- Added a new flag `--delete-modules-info` to delete the modules.info file from your project since we use maven 8 it fucks it up.
+    - Did not want to hardcode some shit to ignore the file in maven's xml file because of portability. 
+- Recorded paths for cleanup are now cast to `Path` before removal. Downloaded Jar paths are stored as strings of path objects.
+- Replaced all print calls with logging. Calls become logging.info(), logging.debug(), or logging.warning()/error() as appropriate.
+- Given the accumination of past pathces, determined new version release was warranted so the release gets updated in GH.
+
 ## [1.1.3] - 2025-07-21
 
 ### Patch

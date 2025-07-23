@@ -19,23 +19,25 @@ A self-contained WebCAT-style pre-submission checker:
   - `--version` to show current CLI version
   - `--detect-unreachable` to ignore compiler-reported unreachable code
   - **New** `--scan-impossible-branches` to detect always-true/false predicates
+  - **New** `--delete-modules-info` to remove modules.info files for Maven compatibility
 """
 
 import argparse
 import atexit
 import json
-import os
-import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import urllib.request
+import os
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import logging
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 DEBUG = False
 
 # Track everything we create so we can delete it later:
@@ -43,31 +45,30 @@ CREATED = []
 # Flip to True when we should skip cleanup (debug or --no-cleanup)
 SKIP_CLEANUP = False
 
-# Helper to expand/resolve any path on macOS, Linux or Windows
 def normalize_path(pth):
     """
     Use pathlib to expand user (~), resolve relative symlinks, and
     return a consistently formatted string, regardless of platform.
     """
     try:
-        p = Path(pth).expanduser().resolve()
+        return str(Path(pth).expanduser().resolve())
     except Exception:
-        p = Path(pth)
-    return str(p)
+        return str(Path(pth))
 
 def cleanup():
     """Delete any files or directories we recorded in CREATED."""
     if SKIP_CLEANUP:
         return
     for path in reversed(CREATED):
+        p = Path(path)
         try:
-            if os.path.isdir(path):
-                shutil.rmtree(path)
-            elif os.path.exists(path):
-                os.remove(path)
+            if p.is_dir():
+                shutil.rmtree(p)
+            elif p.exists():
+                p.unlink()
         except Exception as e:
             if DEBUG:
-                print(f"⚠️ Cleanup failed for {path}: {e}")
+                logging.error(f"⚠️ Cleanup failed for {path}: {e}")
     CREATED.clear()
 
 # Ensure cleanup() runs on every normal exit (and SystemExit)
@@ -77,26 +78,26 @@ atexit.register(cleanup)
 # Auto-locate or download jacococli.jar
 # -------------------------------------------------------------------
 def locate_or_download_jacococli(project_root):
-    script_dir = os.path.dirname(__file__)
-    global_jar = os.path.join(script_dir, 'jacococli.jar')
-    if os.path.isfile(global_jar):
+    script_dir = Path(__file__).parent
+    global_jar = script_dir / 'jacococli.jar'
+    if global_jar.is_file():
         if DEBUG:
-            print(f"🔍 Using global jacococli.jar at {global_jar}")
-        return global_jar
+            logging.debug(f"🔍 Using global jacococli.jar at {global_jar}")
+        return str(global_jar)
 
-    jar_dir = os.path.join(project_root, 'lib')
-    os.makedirs(jar_dir, exist_ok=True)
-    project_jar = os.path.join(jar_dir, 'jacococli.jar')
-    if not os.path.isfile(project_jar):
+    jar_dir = Path(project_root) / 'lib'
+    jar_dir.mkdir(parents=True, exist_ok=True)
+    project_jar = jar_dir / 'jacococli.jar'
+    if not project_jar.is_file():
         url = (
             "https://repo1.maven.org/maven2/"
             "org/jacoco/org.jacoco.cli/0.8.8/"
             "org.jacoco.cli-0.8.8-nodeps.jar"
         )
-        print(f"⬇️  Downloading JaCoCo CLI to {project_jar}")
-        urllib.request.urlretrieve(url, project_jar)
-        CREATED.append(project_jar)
-    return project_jar
+        logging.info(f"⬇️  Downloading JaCoCo CLI to {project_jar}")
+        urllib.request.urlretrieve(url, str(project_jar))
+        CREATED.append(str(project_jar))
+    return str(project_jar)
 
 # -------------------------------------------------------------------
 # Helpers for @param / @return validation
@@ -154,28 +155,21 @@ def detect_unreachable_branches(src_root):
     Compile every .java under src/ with -Xlint:unreachable,
     collect all (filename, lineno) pairs that the compiler warns are unreachable.
     """
-    src_dir = os.path.join(src_root, 'src')
-    java_files = []
-    for root, _, files in os.walk(src_dir):
-        for fn in files:
-            if fn.endswith('.java'):
-                java_files.append(os.path.join(root, fn))
+    src_dir = Path(src_root) / 'src'
+    java_files = [str(p) for p in src_dir.rglob('*.java')]
     if not java_files:
         return set()
 
-    out_dir = tempfile.mkdtemp(prefix='unreach_')
-    CREATED.append(out_dir)
+    out_dir = Path(tempfile.mkdtemp(prefix='unreach_'))
+    CREATED.append(str(out_dir))
 
-    cmd = ['javac', '-Xlint:unreachable', '-d', out_dir] + java_files
-    proc = subprocess.run(cmd,
-                          stdout=subprocess.DEVNULL,
-                          stderr=subprocess.PIPE,
-                          text=True)
+    cmd = ['javac', '-Xlint:unreachable', '-d', str(out_dir)] + java_files
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     unreachable = set()
     for line in proc.stderr.splitlines():
         m = re.match(r'(.+\.java):(\d+): warning: unreachable code', line)
         if m:
-            fname = os.path.basename(m.group(1))
+            fname = Path(m.group(1)).name
             lineno = int(m.group(2))
             unreachable.add((fname, lineno))
     return unreachable
@@ -188,42 +182,38 @@ def detect_impossible_branches(src_root):
     try:
         import javalang
     except ImportError:
-        print("⚠️  Missing dependency 'javalang'. Install via `pip install javalang`.")
+        logging.warning("⚠️  Missing dependency 'javalang'. Install via `pip install javalang`.")
         sys.exit(1)
     issues = []
-    for root, _, files in os.walk(os.path.join(src_root, 'src')):
-        for fn in files:
-            if not fn.endswith('.java'):
-                continue
-            path = os.path.join(root, fn)
-            try:
-                text = open(path, encoding='utf-8').read()
-                tree = javalang.parse.parse(text)
-            except Exception:
-                continue
-            for _, node in tree.filter(javalang.tree.IfStatement):
-                cond = node.condition
-                if isinstance(cond, javalang.tree.BinaryOperation):
-                    ol, op, or_ = cond.operandl, cond.operator, cond.operandr
-                    if (isinstance(ol, javalang.tree.Literal) and
-                        isinstance(or_, javalang.tree.Literal)):
-                        expr = f"{ol.value}{op}{or_.value}"
-                        try:
-                            if not eval(expr):
-                                ln = node.position.line
-                                issues.append((path, ln, expr))
-                        except Exception:
-                            pass
+    for path in (Path(src_root) / 'src').rglob('*.java'):
+        try:
+            text = path.read_text(encoding='utf-8')
+            tree = javalang.parse.parse(text)
+        except Exception:
+            continue
+        for _, node in tree.filter(javalang.tree.IfStatement):
+            cond = node.condition
+            if isinstance(cond, javalang.tree.BinaryOperation):
+                ol, op, or_ = cond.operandl, cond.operator, cond.operandr
+                if (isinstance(ol, javalang.tree.Literal) and
+                    isinstance(or_, javalang.tree.Literal)):
+                    expr = f"{ol.value}{op}{or_.value}"
+                    try:
+                        if not eval(expr):
+                            ln = node.position.line
+                            issues.append((str(path), ln, expr))
+                    except Exception:
+                        pass
     return issues
 
 # -------------------------------------------------------------------
 # Core functions
 # -------------------------------------------------------------------
 def load_rules(profile):
-    path = os.path.join(os.path.dirname(__file__), 'templates', f'{profile}.rules.json')
-    if not os.path.isfile(path):
+    path = Path(__file__).parent / 'templates' / f'{profile}.rules.json'
+    if not path.is_file():
         sys.exit(f'Error: profile "{profile}" not found')
-    return json.load(open(path, encoding='utf-8'))
+    return json.loads(path.read_text(encoding='utf-8'))
 
 def override_rules(rules, args):
     s = rules['style']
@@ -263,37 +253,32 @@ def collect_sources(path):
         CREATED.append(tmp.name)
         return [tmp.name]
 
-    src = os.path.join(path, 'src')
-    if not os.path.isdir(src):
+    src = Path(path) / 'src'
+    if not src.is_dir():
         sys.exit(f'Error: expected directory "{src}"')
-    out = []
-    for root, _, files in os.walk(src):
-        for fn in files:
-            if fn.endswith('.java'):
-                out.append(os.path.join(root, fn))
-    return out
+    return [str(p) for p in src.rglob('*.java')]
 
 def ensure_pom(root, rules):
     """
     Generate a minimal pom.xml (with JUnit, optional student.jar & JaCoCo)
     and the build-helper plugin to flatten src/ into both main & test.
     """
-    pom = os.path.join(root, 'pom.xml')
-    if os.path.exists(pom):
+    root = Path(root)
+    pom = root / 'pom.xml'
+    if pom.exists():
         if DEBUG:
-            print(f"Debug: pom.xml already exists at {pom}, skipping generation")
+            logging.debug(f"Debug: pom.xml already exists at {pom}, skipping generation")
         return
 
-    script_dir = os.path.dirname(__file__)
-    ext_jar = rules.get('external_jar') or os.path.join(script_dir, 'student.jar')
-    ext_jar = os.path.abspath(ext_jar)
-    has_student = os.path.isfile(ext_jar)
+    script_dir = Path(__file__).parent
+    ext_jar = Path(rules.get('external_jar') or script_dir / 'student.jar').resolve()
+    has_student = ext_jar.is_file()
     if has_student:
-        print(f'🔗 Including external JAR: {ext_jar}')
+        logging.info(f'🔗 Including external JAR: {ext_jar}')
     else:
-        print(f'— No external JAR found at {ext_jar}; tests will run with JUnit only')
+        logging.info(f'— No external JAR found at {ext_jar}; tests will run with JUnit only')
     if DEBUG:
-        print(f"Debug: student.jar path: {ext_jar} (exists: {has_student})")
+        logging.debug(f"Debug: student.jar path: {ext_jar} (exists: {has_student})")
 
     deps = []
     if has_student:
@@ -379,13 +364,12 @@ def ensure_pom(root, rules):
   </build>
 </project>'''
 
-    with open(pom, 'w', encoding='utf-8') as f:
-        f.write(content)
-    CREATED.append(pom)
-    print(f'ℹ️  Generated minimal pom.xml in {root}')
+    pom.write_text(content, encoding='utf-8')
+    CREATED.append(str(pom))
+    logging.info(f'ℹ️  Generated minimal pom.xml in {root}')
     if DEBUG:
-        print("Debug: Generated pom.xml content:")
-        print(content)
+        logging.debug("Debug: Generated pom.xml content:")
+        logging.debug(content)
 
 def parse_coverage(xmlpath):
     tree = ET.parse(xmlpath)
@@ -423,14 +407,14 @@ def print_coverage_tree(detailed):
     pkgs = list(detailed.items())
     for pi, (pkg, classes) in enumerate(pkgs):
         pkg_marker = '└─' if pi == len(pkgs)-1 else '├─'
-        print(f"{pkg_marker} package {pkg}")
+        logging.info(f"{pkg_marker} package {pkg}")
         cls_items = list(classes.items())
         for ci, (cls, methods) in enumerate(cls_items):
             cls_marker = '└─' if ci == len(cls_items)-1 else '├─'
-            print(f"    {cls_marker} class {cls}")
+            logging.info(f"    {cls_marker} class {cls}")
             for mi, (mname, mm, mb) in enumerate(methods):
                 m_marker = '└─' if mi == len(methods)-1 else '├─'
-                print(f"        {m_marker} {mname}() — missed methods:{mm}, branches:{mb}")
+                logging.info(f"        {m_marker} {mname}() — missed methods:{mm}, branches:{mb}")
 
 def split_args(s):
     parts, cur, depth, in_str = [], '', 0, False
@@ -459,13 +443,13 @@ def split_args(s):
 
 def check_file(path, rules):
     errs = []
-    lines = open(path, encoding='utf-8').read().splitlines(keepends=True)
+    lines = Path(path).read_text(encoding='utf-8').splitlines(keepends=True)
     text  = ''.join(lines)
     s, t = rules['style'], rules['testing']
 
     # PACKAGE-level checks…
-    rel = os.path.relpath(path)
-    parts = rel.split(os.sep)
+    rel = Path(path).relative_to(Path(path).anchor)
+    parts = rel.parts
     nested = 'src' in parts and len(parts) > parts.index('src') + 2
     if nested and s.get('require_package_annotation', True):
         pkg_match = re.search(r'^\s*package\s+[\w\.]+;', text, re.M)
@@ -520,14 +504,12 @@ def check_file(path, rules):
     if s.get('closing_brace_alone'):
         for i, ln in enumerate(lines, 1):
             stripped = ln.lstrip()
-            # skip any comment or Javadoc line entirely
             if stripped.startswith('//') or stripped.startswith('/*') \
                or stripped.startswith('*')  or stripped.startswith('*/'):
                 continue
             if '}' in ln:
                 idx   = ln.find('}')
                 trail = ln[idx+1:]
-                # allow comment-only trailing text
                 if trail.strip() and not trail.strip().startswith('//') \
                                and not trail.strip().startswith('/*'):
                     errs.append(f'Line {i}: closing brace should be alone on its line')
@@ -602,13 +584,13 @@ def check_file(path, rules):
 
 def parse_test_reports_tree(report_dir):
     results = {}
-    if not os.path.isdir(report_dir):
+    report_dir = Path(report_dir)
+    if not report_dir.is_dir():
         return results
-    for fn in os.listdir(report_dir):
-        if fn.startswith("TEST-") and fn.endswith(".xml"):
-            full = os.path.join(report_dir, fn)
-            tree = ET.parse(full); root = tree.getroot()
-            suite = root.attrib.get('name', fn[5:-4])
+    for fn in report_dir.iterdir():
+        if fn.name.startswith("TEST-") and fn.name.endswith(".xml"):
+            tree = ET.parse(str(fn)); root = tree.getroot()
+            suite = root.attrib.get('name', fn.name[5:-4])
             cases = []
             for tc in root.findall('testcase'):
                 name = tc.attrib.get('name')
@@ -628,24 +610,25 @@ def run_jacoco_cli_report(project_root, jar_path):
     """
     Run jacococli.jar to regenerate the XML report, then parse it.
     """
-    exec_file  = os.path.join(project_root, 'target', 'jacoco.exec')
-    class_dir  = os.path.join(project_root, 'target', 'classes')
-    xml_report = os.path.join(project_root, 'target', 'site', 'jacoco', 'jacoco.xml')
-    if not os.path.isfile(jar_path):
-        print(f"⚠️  jacococli.jar not found at {jar_path}; cannot regenerate XML")
+    project_root = Path(project_root)
+    exec_file  = project_root / 'target' / 'jacoco.exec'
+    class_dir  = project_root / 'target' / 'classes'
+    xml_report = project_root / 'target' / 'site' / 'jacoco' / 'jacoco.xml'
+    if not Path(jar_path).is_file():
+        logging.warning(f"⚠️  jacococli.jar not found at {jar_path}; cannot regenerate XML")
         return
     cmd = [
         'java', '-jar', jar_path,
-        'report', exec_file,
-        '--classfiles', class_dir,
-        '--xml', xml_report
+        'report', str(exec_file),
+        '--classfiles', str(class_dir),
+        '--xml', str(xml_report)
     ]
     try:
-        subprocess.run(cmd, cwd=project_root, check=True, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, cwd=str(project_root), check=True, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-        print("⚠️  Failed to run jacococli.jar report; falling back to existing XML")
-    print("\n🔎 Coverage gaps (from regenerated XML):")
-    detailed = parse_coverage_details(xml_report)
+        logging.warning("⚠️  Failed to run jacococli.jar report; falling back to existing XML")
+    logging.info("\n🔎 Coverage gaps (from regenerated XML):")
+    detailed = parse_coverage_details(str(xml_report))
     print_coverage_tree(detailed)
 
 def main():
@@ -684,59 +667,71 @@ def main():
                    help='force cleanup even in debug mode (overrides --no-cleanup)')
     p.add_argument('--debug', action='store_true', help='enable debug output')
     p.add_argument('--version', action='version', version=__version__, help="show version and exit")
+    p.add_argument('--delete-modules-info', action='store_true',
+                   help='Delete modules.info files for Maven compatibility')
     args = p.parse_args()
 
-    # if no path and nothing piped in, show help instead of blocking on stdin.read()
-    if not args.path and sys.stdin.isatty():
-        p.print_help()
-        sys.exit(0)
+    # configure logging
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format='%(levelname)s: %(message)s'
+    )
 
     if args.path:
-        #args.path = os.path.abspath(os.path.expanduser(args.path))
         args.path = normalize_path(args.path)
-
     if args.external_jar:
-        #args.external_jar = os.path.abspath(os.path.expanduser(args.external_jar))
-        args.path = normalize_path(args.path)
-
+        args.external_jar = normalize_path(args.external_jar)
 
     global DEBUG, SKIP_CLEANUP
     DEBUG = args.debug
     if DEBUG:
         if not args.cleanup:
             args.no_cleanup = True
-        print("🔍 Debug:", args)
+        logging.debug(f"🔍 Debug: {args}")
     SKIP_CLEANUP = args.no_cleanup and not args.cleanup
 
     def _sig_handler(signum, frame):
-        print("\n🔨 Interrupted; cleaning up...")
+        logging.info("\n🔨 Interrupted; cleaning up...")
         sys.exit(1)
     signal.signal(signal.SIGINT, _sig_handler)
     signal.signal(signal.SIGTERM, _sig_handler)
+
+    # delete any modules.info files if requested
+    if args.delete_modules_info:
+        root = Path(args.path) if args.path else Path.cwd()
+        for info_file in root.rglob('modules.info'):
+            try:
+                info_file.unlink()
+                logging.info(f"🗑️ Deleted modules.info at {info_file}")
+            except Exception as e:
+                logging.error(f"Failed to delete {info_file}: {e}")
 
     # Early scan for impossible branches
     if args.scan_impossible_branches:
         issues = detect_impossible_branches(args.path)
         if issues:
-            print("\n🔍 Impossible-branch issues found:")
+            logging.info("\n🔍 Impossible-branch issues found:")
             for (f, ln, expr) in issues:
-                print(f"  • {f}:{ln}: condition `{expr}` is always false")
+                logging.info(f"  • {f}:{ln}: condition `{expr}` is always false")
             sys.exit(1)
 
     failed = False
     sources = collect_sources(args.path)
     if DEBUG:
-        print("🔍 Debug: source files found:", sources)
+        logging.debug(f"🔍 Debug: source files found: {sources}")
 
     for src in sources:
         errs = check_file(src, override_rules(load_rules(args.profile), args))
         if errs:
             failed = True
-            print(f'\n== {src} ==')
+            logging.error(f"\n== {src} ==")
             for e in errs:
-                print('  •', e)
+                logging.error(f"  • {e}")
 
-    print('\n❌ Style/Test checks failed' if failed else '\n✅ Style/Test checks passed')
+    if failed:
+        logging.error("\n❌ Style/Test checks failed")
+    else:
+        logging.info("\n✅ Style/Test checks passed")
 
     if args.run_tests:
         if not args.path:
@@ -747,37 +742,25 @@ def main():
 
         # ---------------- robust Maven lookup ----------------
         def find_mvn():
-            # 1) on your PATH?
             exe = shutil.which('mvn')
             if exe:
                 return exe
-
-            # 2) M2_HOME / MAVEN_HOME
             for ev in ('M2_HOME','MAVEN_HOME'):
                 home = os.environ.get(ev)
                 if home:
-                    cand = os.path.join(home, 'bin',
-                                        'mvn.cmd' if os.name=='nt' else 'mvn')
-                    if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                        return cand
-
-            # 3) Chocolatey default
+                    cand = Path(home) / 'bin' / ('mvn.cmd' if os.name=='nt' else 'mvn')
+                    if cand.is_file() and cand.match('*.exe') or cand.match('*.cmd') or cand.match('mvn'):
+                        return str(cand)
             if os.name == 'nt':
-                choco = r"C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.10\bin\mvn.cmd"
-                if os.path.isfile(choco) and os.access(choco, os.X_OK):
-                    return choco
-                # also glob any manual installs under Program Files*
-                for base in (os.environ.get('ProgramFiles'),
-                             os.environ.get('ProgramFiles(x86)')):
+                choco = Path(r"C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.10\bin\mvn.cmd")
+                if choco.is_file():
+                    return str(choco)
+                for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
                     if base:
-                        pattern = os.path.join(base, 'apache-maven*', 'bin', 'mvn.cmd')
-                        for cand in glob.glob(pattern):
-                            if os.access(cand, os.X_OK):
-                                return cand
-
-            # 4) Linux package managers
+                        for cand in Path(base).glob('apache-maven*/bin/mvn.cmd'):
+                            if cand.exists():
+                                return str(cand)
             if os.name == 'posix' and shutil.which('sudo'):
-                # Debian/Ubuntu
                 if shutil.which('apt-get'):
                     try:
                         subprocess.run(['sudo','apt-get','update'], check=True,
@@ -788,7 +771,6 @@ def main():
                             return exe2
                     except subprocess.CalledProcessError:
                         pass
-                # Arch Linux
                 if shutil.which('pacman'):
                     try:
                         subprocess.run(['sudo','pacman','-Sy','--noconfirm','maven'], check=True)
@@ -797,8 +779,6 @@ def main():
                             return exe3
                     except subprocess.CalledProcessError:
                         pass
-
-            # 5) macOS Homebrew
             brew = shutil.which('brew')
             if brew:
                 try:
@@ -806,17 +786,15 @@ def main():
                         [brew, '--prefix', 'maven'],
                         stderr=subprocess.DEVNULL, text=True
                     ).strip()
-                    cand = os.path.join(prefix, 'bin', 'mvn')
-                    if os.access(cand, os.X_OK):
-                        return cand
+                    cand = Path(prefix) / 'bin' / 'mvn'
+                    if cand.exists():
+                        return str(cand)
                 except subprocess.CalledProcessError:
                     pass
-                # maybe already linked?
                 exe2 = shutil.which('mvn')
                 if exe2:
                     return exe2
-                # install it
-                print("⬇️  Installing Maven via Homebrew…", file=sys.stderr)
+                logging.info("⬇️  Installing Maven via Homebrew…")
                 try:
                     subprocess.run([brew, 'install', 'maven'], check=True)
                 except subprocess.CalledProcessError:
@@ -824,54 +802,59 @@ def main():
                 exe3 = shutil.which('mvn')
                 if exe3:
                     return exe3
-
             return None
 
         mvn_exe = find_mvn()
         if not mvn_exe:
-            sys.exit("❌ Error: Maven executable not found. "
-                     "Please install Maven or add it to your PATH.")
+            sys.exit("❌ Error: Maven executable not found. Please install Maven or add it to your PATH.")
+
         mvn_cmd = [mvn_exe]
         if DEBUG:
             mvn_cmd.append('-X')
         mvn_cmd += ['-q', 'clean', 'verify']
         if DEBUG:
-            print("🔍 Debug: running Maven:", ' '.join(mvn_cmd))
-        subprocess.run(mvn_cmd, cwd=args.path, check=True)
+            logging.debug(f"🔍 Debug: running Maven: {' '.join(mvn_cmd)}")
 
-        target_dir = os.path.join(args.path, 'target')
-        if os.path.isdir(target_dir):
-            CREATED.append(target_dir)
+        # wrap mvn invocation in try/except
+        try:
+            subprocess.run(mvn_cmd, cwd=args.path, check=True)
+        except subprocess.CalledProcessError as e:
+            logging.error(f"❌ Maven build failed: {e}")
+            sys.exit(1)
+
+        target_dir = Path(args.path) / 'target'
+        if target_dir.is_dir():
+            CREATED.append(str(target_dir))
 
         if DEBUG:
-            print("🔍 Debug: Maven clean verify completed")
+            logging.debug("🔍 Debug: Maven clean verify completed")
 
-        rpt = os.path.join(args.path, 'target', 'site', 'jacoco', 'jacoco.xml')
-        if not os.path.isfile(rpt):
+        rpt = Path(args.path) / 'target' / 'site' / 'jacoco' / 'jacoco.xml'
+        if not rpt.is_file():
             sys.exit(f'❌ Coverage report missing at {rpt}')
 
-        miss_m, cov_m = parse_coverage(rpt)['METHOD']
-        miss_b, cov_b = parse_coverage(rpt)['BRANCH']
+        miss_m, cov_m = parse_coverage(str(rpt))['METHOD']
+        miss_b, cov_b = parse_coverage(str(rpt))['BRANCH']
         total_m = miss_m + cov_m
         total_b = miss_b + cov_b
         pct_m = (cov_m / total_m * 100) if total_m > 0 else 100.0
         pct_b = (cov_b / total_b * 100) if total_b > 0 else 100.0
 
-        print("\n🧪 Test results:")
-        tree = parse_test_reports_tree(os.path.join(args.path, 'target', 'surefire-reports'))
+        logging.info("\n🧪 Test results:")
+        tree = parse_test_reports_tree(Path(args.path) / 'target' / 'surefire-reports')
         suites = sorted(tree.items())
         for i, (suite, cases) in enumerate(suites):
             suite_marker = '└─' if i == len(suites)-1 else '├─'
-            print(f"{suite_marker} {suite}")
+            logging.info(f"{suite_marker} {suite}")
             for j, (test, status, msg) in enumerate(cases):
                 case_marker = '└─' if j == len(cases)-1 else '├─'
                 symbol = {"PASS":"✅","FAIL":"❌","ERROR":"❌","SKIPPED":"⏭️"}[status]
                 info = f": {msg}" if msg else ""
-                print(f"    {case_marker} {test} {symbol}{info}")
+                logging.info(f"    {case_marker} {test} {symbol}{info}")
 
-        print("\n📊 Coverage summary:")
-        print(f"  🧩 Method coverage: {pct_m:.1f}% ({cov_m}/{total_m})")
-        print(f"  🍃 Branch coverage: {pct_b:.1f}% ({cov_b}/{total_b})")
+        logging.info("\n📊 Coverage summary:")
+        logging.info(f"  🧩 Method coverage: {pct_m:.1f}% ({cov_m}/{total_m})")
+        logging.info(f"  🍃 Branch coverage: {pct_b:.1f}% ({cov_b}/{total_b})")
 
         cov_rules = rules['testing']
         hard_fail_m = (cov_rules.get('require_full_method_coverage') and pct_m < 100)
@@ -880,7 +863,7 @@ def main():
 
         # Javac-based unreachable‐branch filtering
         if do_detect and pct_b < 100:
-            original    = parse_coverage_details(rpt)
+            original    = parse_coverage_details(str(rpt))
             unreachable = detect_unreachable_branches(args.path)
 
             filtered = {}
@@ -903,33 +886,33 @@ def main():
                 for (_, _, mb) in methods
             )
             if remain == 0:
-                print("\n✅ All remaining branch misses are in statically unreachable code.")
-                print("ℹ️ Treating branch coverage as 100%.\n")
-                print("🔎 Original coverage gaps (from XML):")
+                logging.info("\n✅ All remaining branch misses are in statically unreachable code.")
+                logging.info("ℹ️ Treating branch coverage as 100%.\n")
+                logging.info("🔎 Original coverage gaps (from XML):")
                 print_coverage_tree(original)
                 sys.exit(0)
 
         # Hard-fail if any required coverage still unmet
         if hard_fail_m or hard_fail_b:
-            print("\n❌ Coverage requirements not met:")
+            logging.error("\n❌ Coverage requirements not met:")
             if hard_fail_b:
-                print("   branch coverage is <100% outside of unreachable code")
+                logging.error("   branch coverage is <100% outside of unreachable code")
             if args.enable_cli_report:
                 jar_path = locate_or_download_jacococli(args.path)
                 run_jacoco_cli_report(args.path, jar_path)
             else:
-                print("\n🔎 Coverage gaps (from XML):")
-                print_coverage_tree(parse_coverage_details(rpt))
+                logging.info("\n🔎 Coverage gaps (from XML):")
+                print_coverage_tree(parse_coverage_details(str(rpt)))
             sys.exit(1)
 
         if args.run_main:
             for src in sources:
-                txt = open(src, encoding='utf-8').read()
+                txt = Path(src).read_text(encoding='utf-8')
                 if 'public static void main' in txt:
-                    cls = os.path.splitext(os.path.basename(src))[0]
-                    print(f'▶️ Running main() in {cls}')
+                    cls = Path(src).stem
+                    logging.info(f'▶️ Running main() in {cls}')
                     subprocess.run(
-                        ['java', '-cp', os.path.join(args.path, 'target', 'classes'), cls],
+                        ['java', '-cp', str(Path(args.path) / 'target' / 'classes'), cls],
                         cwd=args.path, check=False
                     )
                     break
