@@ -45,6 +45,25 @@ CREATED = []
 # Flip to True when we should skip cleanup (debug or --no-cleanup)
 SKIP_CLEANUP = False
 
+def detect_main_class(src_root):
+    """
+    Walk src_root looking for any .java with a main(String[]) method,
+    extract its `package …;` (if any), and return the FQCN.
+    """
+    main_pat = re.compile(r'public\s+static\s+void\s+main\s*\(\s*String\[\]\s+\w+\s*\)')
+    pkg_pat  = re.compile(r'^\s*package\s+([\w\.]+)\s*;', re.M)
+
+    src_dir = Path(src_root) / 'src'
+    for java in src_dir.rglob('*.java'):
+        text = java.read_text(encoding='utf-8')
+        if main_pat.search(text):
+            # found your main-haver
+            pkg_m = pkg_pat.search(text)
+            pkg   = pkg_m.group(1) if pkg_m else ''
+            cls   = java.stem
+            return f"{pkg + '.' if pkg else ''}{cls}"
+    return None
+
 def normalize_path(pth):
     """
     Use pathlib to expand user (~), resolve relative symlinks, and
@@ -666,6 +685,10 @@ def main():
                    help='use jacococli.jar to regenerate the XML report before parsing')
     p.add_argument('--run-tests', action='store_true', help='compile & run tests via Maven')
     p.add_argument('--run-main', action='store_true', help='after tests, run any main()')
+    p.add_argument(
+        '--ignore-coverage-on-main',
+        action='store_true',
+        help='when used with --run-main, skip the 100% branch coverage requirement and retain compiled classes')
     p.add_argument('--external-jar', dest='external_jars',
                nargs='+',
                help='paths to external JARs for tests')
@@ -705,6 +728,12 @@ def main():
             args.no_cleanup = True
         logging.debug(f"🔍 Debug: {args}")
     SKIP_CLEANUP = args.no_cleanup and not args.cleanup
+    
+    # If we're planning to run main() and the user asked to ignore coverage,
+    # also prevent cleanup of the target/classes so the .class files stick around.
+    if args.run_main and args.ignore_coverage_on_main:
+        logging.info("ℹ️  --ignore-coverage-on-main: skipping removal of compiled classes")
+        SKIP_CLEANUP = True
 
     def _sig_handler(signum, frame):
         logging.info("\n🔨 Interrupted; cleaning up...")
@@ -875,6 +904,12 @@ def main():
         cov_rules = rules['testing']
         hard_fail_m = (cov_rules.get('require_full_method_coverage') and pct_m < 100)
         hard_fail_b = (cov_rules.get('require_full_branch_coverage') and pct_b < 100)
+        # If we're about to run main() and the user asked to ignore coverage,
+        # skip the branch coverage failure.
+        if args.run_main and args.ignore_coverage_on_main:
+            logging.info("ℹ️  --ignore-coverage-on-main: bypassing branch and method coverage requirement")
+            hard_fail_b = False
+            hard_fail_m = False
         do_detect  = cov_rules.get('detect_unreachable_branches', False)
 
         # Javac-based unreachable‐branch filtering
@@ -922,16 +957,37 @@ def main():
             sys.exit(1)
 
         if args.run_main:
-            for src in sources:
-                txt = Path(src).read_text(encoding='utf-8')
-                if 'public static void main' in txt:
-                    cls = Path(src).stem
-                    logging.info(f'▶️ Running main() in {cls}')
-                    subprocess.run(
-                        ['java', '-cp', str(Path(args.path) / 'target' / 'classes'), cls],
-                        cwd=args.path, check=False
-                    )
-                    break
+            fqcn = detect_main_class(args.path)
+            if not fqcn:
+                logging.error("❌ Couldn't find any public static void main(String[])")
+                sys.exit(1)
+
+            # Build up a classpath that includes:
+            #  1) the compiled classes directory
+            #  2) any external JARs from your rules JSON
+            cp_entries = [str(Path(args.path) / 'target' / 'classes')]
+
+            # grab the external-jars list from your rules
+            rules = override_rules(load_rules(args.profile), args)
+            for jar_name in rules.get('external-jars', []):
+                # first check in project root
+                p1 = Path(args.path) / jar_name
+                # then in templates/
+                p2 = Path(__file__).parent / 'templates' / jar_name
+                jar_path = p1 if p1.is_file() else p2
+                if jar_path.is_file():
+                    cp_entries.append(str(jar_path))
+                else:
+                    logging.warning(f"⚠️ Cannot find external JAR {jar_name} to put on classpath")
+
+            cp_arg = os.pathsep.join(cp_entries)
+
+            logging.info(f'▶️ Running main() in {fqcn} with CP={cp_arg}')
+            subprocess.run(
+                ['java', '-cp', cp_arg, fqcn],
+                cwd=args.path,
+                check=False
+            )
 
     sys.exit(1 if failed else 0)
 
