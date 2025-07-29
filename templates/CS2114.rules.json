@@ -26,6 +26,10 @@
     "require_full_branch_coverage": true,
     "detect_unreachable_branches": true
   },
-  "external-jars": ["./student.jar"]
+  "external-jars": [
+     "student.jar",
+     "CarranoDataStructures.jar",
+     "CS2-GraphWindowLib.jar"
+  ]
 }
 

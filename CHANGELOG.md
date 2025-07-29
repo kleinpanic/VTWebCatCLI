@@ -4,6 +4,12 @@ All the good stuff in **WebcatCLI**, from the very first drop (v1.0.0) through t
 
 ---
 
+## [1.1.5] - 2025-07-29
+
+### Patch and upgrade:
+- Upgraded program to use multiple jars, updated the argument calls.
+- This is a vital update hence new version release so that the package gets updated (might change that logic)
+
 ## [1.1.4] - 2025-07-23
 
 ### Patch and New Release

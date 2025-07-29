@@ -233,8 +233,10 @@ def override_rules(rules, args):
     if args.no_branch_cov:     t['require_full_branch_coverage']       = False
     if getattr(args, 'detect_unreachable', False):
         t['detect_unreachable_branches'] = True
-    if args.external_jar:
-        rules['external_jar'] = args.external_jar
+    # allow user to override (or add to) the JSON list via CLI
+    if getattr(args, 'external_jars', None):
+        # normalize and replace the JSON list
+        rules['external-jars'] = args.external_jars
 
     if args.no_package_annotation:
         s['require_package_annotation'] = False
@@ -260,7 +262,7 @@ def collect_sources(path):
 
 def ensure_pom(root, rules):
     """
-    Generate a minimal pom.xml (with JUnit, optional student.jar & JaCoCo)
+    Generate a minimal pom.xml (with JUnit, optional external JARs & JaCoCo)
     and the build-helper plugin to flatten src/ into both main & test.
     """
     root = Path(root)
@@ -271,26 +273,33 @@ def ensure_pom(root, rules):
         return
 
     script_dir = Path(__file__).parent
-    ext_jar = Path(rules.get('external_jar') or script_dir / 'student.jar').resolve()
-    has_student = ext_jar.is_file()
-    if has_student:
-        logging.info(f'🔗 Including external JAR: {ext_jar}')
-    else:
-        logging.info(f'— No external JAR found at {ext_jar}; tests will run with JUnit only')
-    if DEBUG:
-        logging.debug(f"Debug: student.jar path: {ext_jar} (exists: {has_student})")
+    templates = script_dir / 'templates'
+
+    # 1) gather the list of jar filenames (from JSON)
+    jar_names = rules.get('external-jars', ['student.jar'])
 
     deps = []
-    if has_student:
-        deps.append(f'''
+    # 2) for each name, try templates/NAME then PROJECT_ROOT/NAME
+    for name in jar_names:
+        cand1 = (templates / name).resolve()
+        cand2 = (root / name).resolve()
+        chosen = cand1 if cand1.is_file() else cand2
+
+        if chosen.is_file():
+            aid = chosen.stem
+            logging.info(f'🔗 Including external JAR: {chosen}')
+            deps.append(f'''
     <dependency>
       <groupId>edu.vt.student</groupId>
-      <artifactId>student</artifactId>
+      <artifactId>{aid}</artifactId>
       <version>1.0</version>
       <scope>system</scope>
-      <systemPath>{ext_jar}</systemPath>
+      <systemPath>{chosen}</systemPath>
     </dependency>''')
+        else:
+            logging.warning(f'⚠️ External JAR not found: looked for "{name}" in templates/ and project root')
 
+    # 3) always include JUnit & JaCoCo deps after external jars
     deps.append('''
     <dependency>
       <groupId>junit</groupId>
@@ -312,6 +321,7 @@ def ensure_pom(root, rules):
     </dependency>''')
 
     deps_xml = '\n'.join(deps)
+
     content = f'''<project xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
@@ -364,6 +374,7 @@ def ensure_pom(root, rules):
   </build>
 </project>'''
 
+    # write & record for cleanup
     pom.write_text(content, encoding='utf-8')
     CREATED.append(str(pom))
     logging.info(f'ℹ️  Generated minimal pom.xml in {root}')
@@ -655,7 +666,9 @@ def main():
                    help='use jacococli.jar to regenerate the XML report before parsing')
     p.add_argument('--run-tests', action='store_true', help='compile & run tests via Maven')
     p.add_argument('--run-main', action='store_true', help='after tests, run any main()')
-    p.add_argument('--external-jar', help='path to external student.jar for tests')
+    p.add_argument('--external-jar', dest='external_jars',
+               nargs='+',
+               help='paths to external JARs for tests')
     p.add_argument('--no-package-annotation', action='store_true',
                    help='skip scanning/enforcing any @package Javadoc tags')
     p.add_argument('--no-package-javadoc', action='store_true',
@@ -679,8 +692,11 @@ def main():
 
     if args.path:
         args.path = normalize_path(args.path)
-    if args.external_jar:
-        args.external_jar = normalize_path(args.external_jar)
+    # allow user to override (or add to) the JSON list via CLI
+    if getattr(args, 'external_jars', None):
+        # normalize and replace the JSON list
+        rules['external-jars'] = args.external_jars
+
 
     global DEBUG, SKIP_CLEANUP
     DEBUG = args.debug
