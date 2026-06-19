@@ -1,59 +1,46 @@
 # Publishing Plan
 
-This repository is an upgrade path for `kleinpanic/VTWebCatCLI`, not a
-destructive replacement.
+This upgrade belongs in the existing `kleinpanic/VTWebCatCLI` repository on
+`main`. It should land through the repository's existing history so old users
+can pull normally and keep the classic `WebcatCLI.py` command.
 
-## Current Remote State
-
-- Existing GitHub repo: `git@github.com:kleinpanic/VTWebCatCLI.git`
-- Existing default branch: `main`
-- Existing remote `main` tip observed during prep: `fd72a54`
-- Local upgrade branch starts from a separate scaffold history.
-
-Because the histories are different, do not push local `main` directly to
-remote `main`.
-
-## Safe Publication Flow
-
-Two public branches exist:
-
-- `profile-aware-upgrade`: clean orphan branch containing only public-safe
-  upgrade files. CI passed, but GitHub cannot open it as a PR because it has no
-  common history with `main`.
-- `profile-aware-upgrade-pr`: PR-compatible branch based on remote `main`, with
-  the upgrade tree overlaid. This is the branch used for the draft PR.
-
-The draft PR is:
+## Active PR
 
 ```text
 https://github.com/kleinpanic/VTWebCatCLI/pull/1
 ```
 
-If recreating the safe flow:
+- Base: `main`
+- Head: `profile-aware-upgrade-pr`
+- Purpose: merge the profile-aware upgrade into the real VTWebCatCLI mainline
+  without force-pushing over existing history.
 
-1. Add the existing GitHub repo as `origin`.
-2. Push clean public work to a review branch:
+## Mainline Requirements
 
-   ```sh
-   git push -u origin HEAD:refs/heads/profile-aware-upgrade
-   ```
+Before merging:
 
-3. For an actual PR, create a second branch from `origin/main` and overlay the
-   same public tree so GitHub has common history.
-4. Open a draft pull request.
-5. Decide whether to:
-   - merge the upgrade branch into the original history,
-   - reset the repo intentionally after archiving the old state,
-   - or publish under a separate repository name.
+- `WebcatCLI.py` must remain available at the repository root.
+- The classic checker must remain first-class supported functionality.
+- `bin/webcat` must be additive, not a replacement for existing workflows.
+- Public CI must pass.
+- Public docs must describe CS2505 and CS3114 as peer course profiles.
+- Any official-looking score must distinguish local CLI output from Web-CAT
+  output.
+
+## Branch Notes
+
+An earlier public branch, `profile-aware-upgrade`, was pushed as a clean orphan
+branch. It passed CI, but GitHub cannot merge it into `main` normally because
+it has unrelated history. Treat it as superseded by `profile-aware-upgrade-pr`.
 
 ## CI Expectations
 
 The current CI proves:
 
-- imported legacy `VTWebCatCLI` still parses, reports version, and passes its
-  style-rule shell harness;
+- classic `WebcatCLI.py` parses, reports version, and passes its style-rule
+  shell harness;
 - profile-aware `webcat doctor` works for `cs2505` and `cs3114`;
-- the `cs2505` wrapper returns schema JSON;
+- the `cs2505` wrapper returns schema JSON through the classic backend;
 - `cs2505` mutation is explicitly unsupported;
 - `cs3114` direct-JUnit execution works through a hermetic fixture.
 

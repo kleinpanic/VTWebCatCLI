@@ -21,14 +21,14 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install legacy Python dependencies
-        run: python -m pip install -r legacy/VTWebCatCLI/requirements.txt
+      - name: Install classic Python dependencies
+        run: python -m pip install -r vtwebcatcli/classic/requirements.txt
 
-      - name: Validate legacy VTWebCatCLI import
+      - name: Validate classic VTWebCatCLI engine
         run: |
-          python -m py_compile legacy/VTWebCatCLI/WebcatCLI.py
-          python legacy/VTWebCatCLI/WebcatCLI.py --version
-          bash legacy/VTWebCatCLI/tests/test_webcatcli.sh
+          python -m py_compile vtwebcatcli/classic/WebcatCLI.py
+          python WebcatCLI.py --version
+          bash vtwebcatcli/classic/tests/test_webcatcli.sh
 
       - name: Run CLI smoke tests
         run: bash test/run.sh

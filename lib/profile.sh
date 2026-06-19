@@ -12,7 +12,7 @@ PROFILE_REQUIRED_TOOLS=""
 PROFILE_TEST_JARS=""
 PROFILE_MUTATION_JARS=""
 PROFILE_THRESHOLD_DEFAULT=""
-PROFILE_LEGACY_RULES=""
+PROFILE_CLASSIC_RULES=""
 PROFILE_PIT_MUTATORS=""
 PROFILE_ZERO_TEST_POLICY=""
 
@@ -42,7 +42,7 @@ profile_load() {
   PROFILE_TEST_JARS="$(profile_value test_jars "$profile_file")"
   PROFILE_MUTATION_JARS="$(profile_value mutation_jars "$profile_file")"
   PROFILE_THRESHOLD_DEFAULT="$(profile_value threshold_default "$profile_file")"
-  PROFILE_LEGACY_RULES="$(profile_value legacy_rules "$profile_file")"
+  PROFILE_CLASSIC_RULES="$(profile_value classic_rules "$profile_file")"
   PROFILE_PIT_MUTATORS="$(profile_value pit_mutators "$profile_file")"
   PROFILE_ZERO_TEST_POLICY="$(profile_value zero_test_policy "$profile_file")"
 

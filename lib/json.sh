@@ -98,7 +98,7 @@ json_test_result() {
   printf '}\n'
 }
 
-json_legacy_result() {
+json_classic_result() {
   profile="$1"
   command_name="$2"
   status="$3"
@@ -112,7 +112,7 @@ json_legacy_result() {
   json_bool "$ok"
   printf ',"profile":'
   json_string "$profile"
-  printf ',"summary":{"backend":"legacy_vtwebcatcli","exit_code":%s},"failures":[],"issues":[],"raw_output":' "$status"
+  printf ',"summary":{"backend":"classic_vtwebcatcli","exit_code":%s},"failures":[],"issues":[],"raw_output":' "$status"
   json_string "$(cat "$output_file")"
   printf '}\n'
 }

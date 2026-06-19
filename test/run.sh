@@ -57,8 +57,8 @@ pass "doctor default profile"
 
 out="$("$WEBCAT" --profile cs2505 doctor)"
 contains "$out" '"profile":"cs2505"' || fail "doctor honors profile override"
-contains "$out" 'legacy VTWebCatCLI profile' || fail "doctor loads cs2505 profile"
-contains "$out" '"test":"legacy_maven_jacoco"' || fail "cs2505 uses legacy Maven/Jacoco backend"
+contains "$out" 'CS2505 VTWebCatCLI profile' || fail "doctor loads cs2505 profile"
+contains "$out" '"test":"classic_maven_jacoco"' || fail "cs2505 uses classic Maven/Jacoco backend"
 contains "$out" '"mutation":"none"' || fail "cs2505 has no mutation backend"
 contains "$out" '"commands":["test","doctor"]' || fail "cs2505 command capabilities"
 pass "doctor cs2505 profile"
@@ -106,10 +106,10 @@ public class Good {
     }
 }
 EOF
-out="$(cd "$tmp" && WEBCAT_LEGACY_TIMEOUT=1 "$WEBCAT" test)"
-contains "$out" '"profile":"cs2505"' || fail "cs2505 legacy test emits profile"
-contains "$out" '"backend":"legacy_vtwebcatcli"' || fail "cs2505 legacy test uses legacy backend"
-pass "cs2505 legacy wrapper"
+out="$(cd "$tmp" && WEBCAT_CLASSIC_TIMEOUT=1 "$WEBCAT" test)"
+contains "$out" '"profile":"cs2505"' || fail "cs2505 classic test emits profile"
+contains "$out" '"backend":"classic_vtwebcatcli"' || fail "cs2505 test uses classic backend"
+pass "cs2505 classic wrapper"
 
 if "$WEBCAT" --profile cs2505 mutate >/tmp/webcat-cs2505-mutate.out 2>/dev/null; then
   fail "cs2505 mutate should be unsupported"

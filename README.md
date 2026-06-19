@@ -1,43 +1,66 @@
 # VTWebCatCLI
 
-`VTWebCatCLI` is a profile-aware local Web-CAT helper for Virginia Tech Java
-courses. It is being upgraded from the older CS2505-style `VTWebCatCLI` into a
-tool that can support materially different course workflows through separate
-profiles.
+`VTWebCatCLI` is a local pre-submission checker for Virginia Tech Web-CAT
+Java courses. The project still supports the original Python checker workflow,
+and it is being extended with a profile-aware `webcat` runner for courses whose
+grading model is materially different.
 
-Current profiles:
+The goal is not "CS3114 replaces CS2505." The goal is one tool that can support
+multiple VT classes through first-class course profiles.
 
-- `cs2505`: legacy VTWebCatCLI direction: style/Javadoc conventions,
-  Maven/JUnit, and JaCoCo coverage.
-- `cs3114`: direct Java 11 compile, `student.jar` JUnit tests, and PIT 1.6.8
-  mutation testing with Web-CAT's CS3114 mutators.
+## Command Surfaces
 
-The CLI executable is `bin/webcat`. The optional Neovim module will live in the
-same repository under `lua/webcat/`, but it must remain a thin consumer of the
-CLI's `schema:1` JSON output.
+Classic VTWebCatCLI remains available:
+
+```sh
+python WebcatCLI.py --help
+python WebcatCLI.py --run-tests /path/to/java-project
+```
+
+The profile-aware runner is:
+
+```sh
+bin/webcat doctor
+bin/webcat test
+bin/webcat mutate
+```
+
+Both command surfaces live in the same repository. The classic checker keeps
+the original style/Javadoc/test-convention/Maven/JaCoCo behavior. The newer
+`bin/webcat` command provides JSON output for editor and CI integration.
+
+## Current Course Profiles
+
+- `cs2505`: VTWebCatCLI classic checks: style, Javadoc, test conventions,
+  Maven/JUnit execution, and JaCoCo coverage parsing.
+- `cs3114`: direct Java compile, `student.jar` JUnit tests, and PIT mutation
+  testing with the course-specific mutator set.
+
+Additional classes should be added as new profile directories under
+`profiles/<course>/`, with course-specific logic isolated behind a backend
+rather than blended into another course's assumptions.
 
 ## Status
 
 Implemented now:
 
-- `webcat doctor`
-- `webcat test` for `cs3114`
-- `webcat mutate` for `cs3114`
-- timeout-wrapped `webcat test` bridge for the imported legacy `cs2505`
-  VTWebCatCLI backend
-- profile loading from `.webcat.toml`
-- JSON output suitable for editor/CI consumption
-- GitHub Actions CI for CLI smoke tests, profile separation, and a hermetic
-  CS3114 direct-JUnit fixture
-- imported legacy `VTWebCatCLI` static/style harness validation in CI
+- original `WebcatCLI.py` entrypoint preserved;
+- classic checker relocated to `vtwebcatcli/classic/` as first-class code;
+- `webcat doctor`;
+- `webcat test` for `cs3114`;
+- `webcat mutate` for `cs3114`;
+- `webcat test` bridge for `cs2505` through the classic VTWebCatCLI backend;
+- `.webcat.toml` walk-up config loading;
+- schema-versioned JSON output from the profile runner;
+- GitHub Actions CI for the classic checker and profile runner.
 
-Not implemented yet:
+Not complete yet:
 
-- fully verified CS2505 Maven/JUnit/JaCoCo coverage execution in CI
-- Web-CAT `targets` and `submit`
-- credential backends
-- Neovim commands
-- jar vendoring/provenance completion
+- full CS2505 Maven/JUnit/JaCoCo coverage execution proven in GitHub CI;
+- Web-CAT authenticated `targets` and `submit`;
+- credential backends;
+- Neovim commands;
+- jar vendoring/provenance completion.
 
 ## Project Config
 
@@ -61,63 +84,40 @@ target_classes = "MovieRaterDB,SparseMatrix"
 target_tests = "MovieRaterTest"
 ```
 
-## Commands
+## Verification Notes
 
-```sh
-bin/webcat doctor
-bin/webcat test
-bin/webcat mutate
-```
-
-Each command emits one JSON object on stdout.
-
-Example verified against the local CS3114 Project 1:
-
-```text
-doctor: ok, no missing jars
-test:   37 passed, 0 failed
-mutate: 155 killed, 5 survived, 160 total, 96.9%
-```
+Local CS3114 Project 1 verification runs through `bin/webcat`, but local PIT
+output is not the same thing as the Web-CAT mutation percentage. Web-CAT may
+use different instrumentation, hidden/reference checks, mutation targets, or
+full-precision scoring. Do not quote a local percentage as the official Web-CAT
+score unless it has been calibrated against the current submission report.
 
 ## Development
 
-Run the local smoke tests:
+Run local checks:
 
 ```sh
+python -m py_compile vtwebcatcli/classic/WebcatCLI.py
+python WebcatCLI.py --version
+bash vtwebcatcli/classic/tests/test_webcatcli.sh
 bash test/run.sh
 ```
 
-Validate command output:
+Validate profile-runner JSON:
 
 ```sh
 bin/webcat doctor | python3 -m json.tool
+bin/webcat --profile cs2505 doctor | python3 -m json.tool
+bin/webcat --profile cs3114 doctor | python3 -m json.tool
 ```
 
-The test harness exercises:
+## Adding A Course
 
-- profile metadata for `cs2505` and `cs3114`,
-- config walk-up discovery,
-- CS2505 legacy wrapper JSON output,
-- unsupported CS2505 mutation behavior,
-- a real CS3114 compile + JUnit invocation fixture with comma-separated tests.
-
-CI also runs the imported legacy harness:
-
-```sh
-bash legacy/VTWebCatCLI/tests/test_webcatcli.sh
-```
-
-That protects the original CS2505-style static checks while the new
-profile-aware wrapper grows around them.
+See `docs/course-profiles.md`. A new course should add a profile, describe its
+tools and thresholds, and implement only the backend behavior that actually
+matches that course.
 
 ## Publishing
 
-See `PUBLISHING.md`. The existing public GitHub repo
-`kleinpanic/VTWebCatCLI` has its own `main` history, so this upgrade should be
-pushed to a review branch first, not force-pushed over `main`.
-
-## Naming
-
-Canonical product/repo spelling should be `VTWebCatCLI`, matching the original
-repository. The local folder may still be named `cs3114-webcat` until the rename
-and GitHub migration are explicitly confirmed.
+See `PUBLISHING.md`. The upgrade should land on `main` through the existing
+`kleinpanic/VTWebCatCLI` repository history, not as an unrelated replacement.
