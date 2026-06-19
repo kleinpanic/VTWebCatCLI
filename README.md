@@ -103,9 +103,9 @@ Run local checks:
 python -m py_compile vtwebcatcli/classic/WebcatCLI.py
 python WebcatCLI.py --version
 bash vtwebcatcli/classic/tests/test_webcatcli.sh
-bash test/classic-run-tests.sh
-bash test/run.sh
-bash test/repo-health.sh
+bash tests/classic-run-tests.sh
+bash tests/run.sh
+bash tests/repo-health.sh
 ```
 
 Validate profile-runner JSON:

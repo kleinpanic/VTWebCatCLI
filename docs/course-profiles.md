@@ -39,7 +39,7 @@ The profile declares:
 1. Create `profiles/<course>/profile.conf`.
 2. Pick existing backend behavior only if it truly matches the course.
 3. Add a new backend script when the course has different requirements.
-4. Add test coverage in `test/run.sh`.
+4. Add test coverage in `tests/run.sh`.
 5. Update `README.md` with the course and verification status.
 6. Record any required jars in `PROVENANCE.md` before committing binaries.
 

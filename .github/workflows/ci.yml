@@ -33,17 +33,17 @@ jobs:
         run: python -m pip install -r vtwebcatcli/classic/requirements.txt
 
       - name: Validate repository shape
-        run: bash test/repo-health.sh
+        run: bash tests/repo-health.sh
 
       - name: Validate classic VTWebCatCLI engine
         run: |
           python -m py_compile vtwebcatcli/classic/WebcatCLI.py
           python WebcatCLI.py --version
           bash vtwebcatcli/classic/tests/test_webcatcli.sh
-          bash test/classic-run-tests.sh
+          bash tests/classic-run-tests.sh
 
       - name: Run CLI smoke tests
-        run: bash test/run.sh
+        run: bash tests/run.sh
 
       - name: Validate doctor JSON
         run: |
@@ -60,4 +60,4 @@ jobs:
           "$tmp/bin/webcat" --profile cs3114 doctor | python3 -m json.tool >/tmp/webcat-install-cs3114.json
 
       - name: Validate release package contents
-        run: bash test/package-smoke.sh
+        run: bash tests/package-smoke.sh

@@ -14,7 +14,7 @@ cd "$ROOT"
 
 tar czf "$tmp/package/webcatcli-test.tar.gz" \
   WebcatCLI.py bin lib profiles vtwebcatcli \
-  templates doc docs lua plugin tests test \
+  templates docs plugin tests \
   README.md CHANGELOG.md TODO.MD PUBLISHING.md PROVENANCE.md \
   LICENSE licenses requirements.txt
 

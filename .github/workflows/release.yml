@@ -10,8 +10,9 @@ on:
       - 'profiles/**'
       - 'vtwebcatcli/**'
       - 'templates/**'
-      - 'doc/**'
       - 'docs/**'
+      - 'plugin/**'
+      - 'tests/**'
       - 'README.md'
       - 'requirements.txt'
       - '.github/workflows/release.yml'
@@ -43,11 +44,11 @@ jobs:
 
     - name: Validate release inputs
       run: |
-        bash test/repo-health.sh
+        bash tests/repo-health.sh
         python WebcatCLI.py --version
-        bash test/classic-run-tests.sh
-        bash test/run.sh
-        bash test/package-smoke.sh
+        bash tests/classic-run-tests.sh
+        bash tests/run.sh
+        bash tests/package-smoke.sh
 
     - name: Determine current version
       id: ver
@@ -93,7 +94,7 @@ jobs:
         version=${{ steps.ver.outputs.version }}
         tar czf webcatcli-$version.tar.gz \
             WebcatCLI.py bin lib profiles vtwebcatcli \
-            templates doc docs lua plugin tests test \
+            templates docs plugin tests \
             README.md CHANGELOG.md TODO.MD PUBLISHING.md PROVENANCE.md \
             LICENSE licenses requirements.txt
       shell: bash

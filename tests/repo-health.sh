@@ -36,14 +36,17 @@ printf '%s\n' "$tracked" | grep -E '^legacy/VTWebCatCLI/' >/dev/null &&
 
 [ ! -e legacy/VTWebCatCLI ] || fail "legacy/VTWebCatCLI should not exist"
 [ ! -e .planning ] || fail ".planning must stay off public main"
+[ ! -e doc ] || fail "use docs/, not duplicate top-level doc/"
+[ ! -e test ] || fail "use tests/, not duplicate top-level test/"
+[ ! -e lua ] || fail "Neovim integration belongs under plugin/, not duplicate top-level lua/"
 
 for path in \
   WebcatCLI.py \
   requirements.txt \
   tests/test_webcatcli.sh \
-  doc/_webcatcli \
-  doc/webcatcli.1 \
-  doc/webcatcli.bash \
+  docs/classic/_webcatcli \
+  docs/classic/webcatcli.1 \
+  docs/classic/webcatcli.bash \
   licenses/COPYING \
   licenses/COPYING.LESSER \
   licenses/LICENSE \
@@ -62,7 +65,7 @@ done
 
 python3 -m py_compile WebcatCLI.py vtwebcatcli/classic/WebcatCLI.py
 
-if rg -n '\blegacy\b' README.md PUBLISHING.md PROVENANCE.md docs lib profiles tests .github WebcatCLI.py >/tmp/webcat-legacy-word.out; then
+if rg -n '\blegacy\b' README.md PUBLISHING.md PROVENANCE.md docs lib profiles .github WebcatCLI.py >/tmp/webcat-legacy-word.out; then
   cat /tmp/webcat-legacy-word.out >&2
   fail "public docs/code should describe classic support without legacy wording"
 fi
