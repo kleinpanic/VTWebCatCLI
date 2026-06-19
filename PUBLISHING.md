@@ -4,16 +4,16 @@ This upgrade belongs in the existing `kleinpanic/VTWebCatCLI` repository on
 `main`. It should land through the repository's existing history so old users
 can pull normally and keep the classic `WebcatCLI.py` command.
 
-## Active PR
+## Published State
 
 ```text
-https://github.com/kleinpanic/VTWebCatCLI/pull/1
+main: 8a3b1fa
+merged PR: https://github.com/kleinpanic/VTWebCatCLI/pull/1
 ```
 
-- Base: `main`
-- Head: `profile-aware-upgrade-pr`
-- Purpose: merge the profile-aware upgrade into the real VTWebCatCLI mainline
-  without force-pushing over existing history.
+The profile-aware upgrade has been merged into the real VTWebCatCLI mainline
+through the existing repository history. The temporary upgrade branches were
+deleted after merge.
 
 ## Mainline Requirements
 
@@ -26,12 +26,6 @@ Before merging:
 - Public docs must describe CS2505 and CS3114 as peer course profiles.
 - Any official-looking score must distinguish local CLI output from Web-CAT
   output.
-
-## Branch Notes
-
-An earlier public branch, `profile-aware-upgrade`, was pushed as a clean orphan
-branch. It passed CI, but GitHub cannot merge it into `main` normally because
-it has unrelated history. Treat it as superseded by `profile-aware-upgrade-pr`.
 
 ## CI Expectations
 
