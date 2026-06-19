@@ -8,7 +8,7 @@ cs2505_test() {
   python_bin="${PYTHON:-python3}"
   classic_cli="$ROOT_DIR/vtwebcatcli/classic/WebcatCLI.py"
   classic_profile="CS2114"
-  classic_timeout="${WEBCAT_CLASSIC_TIMEOUT:-${WEBCAT_LEGACY_TIMEOUT:-45}}"
+  classic_timeout="${WEBCAT_CLASSIC_TIMEOUT:-45}"
 
   if [ ! -f "$classic_cli" ]; then
     json_error "test" "missing_classic_cli" "classic VTWebCatCLI engine not found" "Check vtwebcatcli/classic."

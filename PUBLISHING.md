@@ -7,25 +7,27 @@ can pull normally and keep the classic `WebcatCLI.py` command.
 ## Published State
 
 ```text
-main: 8a3b1fa
+main: public GitHub main branch
 merged PR: https://github.com/kleinpanic/VTWebCatCLI/pull/1
 ```
 
-The profile-aware upgrade has been merged into the real VTWebCatCLI mainline
-through the existing repository history. The temporary upgrade branches were
-deleted after merge.
+The profile-aware upgrade belongs on the real VTWebCatCLI mainline through the
+existing repository history. Finished work should be pushed or merged to
+`main`; do not leave a dangling pull request as the final state.
 
 ## Mainline Requirements
 
 Before merging:
 
 - `WebcatCLI.py` must remain available at the repository root.
+- old public root paths from the original repository must remain present.
 - The classic checker must remain first-class supported functionality.
 - `bin/webcat` must be additive, not a replacement for existing workflows.
 - Public CI must pass.
 - Public docs must describe CS2505 and CS3114 as peer course profiles.
 - Any official-looking score must distinguish local CLI output from Web-CAT
   output.
+- private planning artifacts must stay off public `main`.
 
 ## CI Expectations
 
@@ -38,6 +40,9 @@ The current CI proves:
 - the `cs2505` wrapper returns schema JSON through the classic backend;
 - `cs2505` mutation is explicitly unsupported;
 - `cs3114` direct-JUnit execution works through a hermetic fixture.
+- the release tarball contains both command surfaces and their support files.
+- repository health checks reject duplicate migration trees, bytecode artifacts,
+  missing old public paths, and private planning artifacts.
 
 The current CI does not yet prove a broad set of real CS2505 course projects
 through the `bin/webcat --profile cs2505` wrapper or Web-CAT authenticated

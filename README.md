@@ -45,6 +45,7 @@ rather than blended into another course's assumptions.
 Implemented now:
 
 - original `WebcatCLI.py` entrypoint preserved;
+- original public files and root paths preserved for normal `git pull` usage;
 - classic checker relocated to `vtwebcatcli/classic/` as first-class code;
 - `webcat doctor`;
 - `webcat test` for `cs3114`;
@@ -62,7 +63,7 @@ Not complete yet:
 - Web-CAT authenticated `targets` and `submit`;
 - credential backends;
 - Neovim commands;
-- jar vendoring/provenance completion.
+- CS3114 jar vendoring/provenance completion.
 
 ## Project Config
 
@@ -104,6 +105,7 @@ python WebcatCLI.py --version
 bash vtwebcatcli/classic/tests/test_webcatcli.sh
 bash test/classic-run-tests.sh
 bash test/run.sh
+bash test/repo-health.sh
 ```
 
 Validate profile-runner JSON:

@@ -5,18 +5,49 @@ on:
     branches: [ main ]
     paths:
       - 'WebcatCLI.py'
+      - 'bin/**'
+      - 'lib/**'
+      - 'profiles/**'
+      - 'vtwebcatcli/**'
       - 'templates/**'
+      - 'doc/**'
+      - 'docs/**'
       - 'README.md'
+      - 'requirements.txt'
+      - '.github/workflows/release.yml'
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write      # allow creating releases & uploading assets
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install classic Python dependencies
+      run: python -m pip install -r vtwebcatcli/classic/requirements.txt
+
+    - name: Validate release inputs
+      run: |
+        bash test/repo-health.sh
+        python WebcatCLI.py --version
+        bash test/classic-run-tests.sh
+        bash test/run.sh
+        bash test/package-smoke.sh
 
     - name: Determine current version
       id: ver
@@ -61,13 +92,10 @@ jobs:
       run: |
         version=${{ steps.ver.outputs.version }}
         tar czf webcatcli-$version.tar.gz \
-            WebcatCLI.py \
-            templates \
-            doc \
-            README.md \
-            CHANGELOG.md \
-            LICENSE \
-            requirements.txt \
+            WebcatCLI.py bin lib profiles vtwebcatcli \
+            templates doc docs lua plugin tests test \
+            README.md CHANGELOG.md TODO.MD PUBLISHING.md PROVENANCE.md \
+            LICENSE LICENSES licenses requirements.txt
       shell: bash
     - name: Upload tarball to Release
       if: steps.check.outputs.exists == 'false'
@@ -75,4 +103,3 @@ jobs:
       with:
         tag_name: v${{ steps.ver.outputs.version }}
         files: webcatcli-${{ steps.ver.outputs.version }}.tar.gz
-

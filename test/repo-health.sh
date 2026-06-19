@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+fail() {
+  printf 'FAIL %s\n' "$1" >&2
+  exit 1
+}
+
+pass() {
+  printf 'PASS %s\n' "$1"
+}
+
+tracked="$(git ls-files)"
+
+printf '%s\n' "$tracked" | grep -E '(^|/)__pycache__/|\.pyc$' >/dev/null &&
+  fail "tracked Python bytecode is not allowed"
+
+printf '%s\n' "$tracked" | grep -E '^legacy/VTWebCatCLI/' >/dev/null &&
+  fail "duplicate classic implementation tree is not allowed"
+
+[ ! -e legacy/VTWebCatCLI ] || fail "legacy/VTWebCatCLI should not exist"
+[ ! -e .planning ] || fail ".planning must stay off public main"
+
+for path in \
+  WebcatCLI.py \
+  requirements.txt \
+  tests/test_webcatcli.sh \
+  doc/_webcatcli \
+  doc/webcatcli.1 \
+  doc/webcatcli.bash \
+  licenses/COPYING \
+  licenses/COPYING.LESSER \
+  licenses/LICENSE \
+  licenses/LICENSE-junit.txt \
+  templates/CS2114.rules.json \
+  templates/student.jar \
+  templates/CarranoDataStructures.jar \
+  templates/CS2-GraphWindowLib.jar
+do
+  [ -e "$path" ] || fail "missing original public path: $path"
+done
+
+[ -x WebcatCLI.py ] || fail "WebcatCLI.py must be executable"
+[ -x bin/webcat ] || fail "bin/webcat must be executable"
+[ -x tests/test_webcatcli.sh ] || fail "tests/test_webcatcli.sh must be executable"
+
+python3 -m py_compile WebcatCLI.py vtwebcatcli/classic/WebcatCLI.py
+
+if rg -n '\blegacy\b' README.md PUBLISHING.md PROVENANCE.md docs lib profiles tests .github WebcatCLI.py >/tmp/webcat-legacy-word.out; then
+  cat /tmp/webcat-legacy-word.out >&2
+  fail "public docs/code should describe classic support without legacy wording"
+fi
+rm -f /tmp/webcat-legacy-word.out
+
+pass "repository health"
