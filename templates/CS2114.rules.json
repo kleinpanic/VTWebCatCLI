@@ -1,0 +1,35 @@
+{
+  "style": {
+    "indentation": {
+      "use_spaces": true,
+      "spaces_per_indent": 4
+    },
+    "max_line_length": 80,
+    "no_tabs": true,
+    "javadoc_required": true,
+    "javadoc_require_author": true,
+    "javadoc_require_version": true,
+    "one_public_class_per_file": true,
+    "check_global_variable_usage": true,
+    "no_empty_methods": true,
+    "no_unused_methods": true,
+    "require_override": true,
+    "require_package_annotation": true,
+    "require_package_javadoc": false,
+    "closing_brace_alone": true
+  },
+  "testing": {
+    "test_methods_prefix": "test",
+    "annotation_required": false,
+    "require_assert_equals_delta": true,
+    "require_full_method_coverage": true,
+    "require_full_branch_coverage": true,
+    "detect_unreachable_branches": true
+  },
+  "external-jars": [
+     "student.jar",
+     "CarranoDataStructures.jar",
+     "CS2-GraphWindowLib.jar"
+  ]
+}
+
