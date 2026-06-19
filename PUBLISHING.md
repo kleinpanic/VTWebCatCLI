@@ -33,10 +33,12 @@ The current CI proves:
 
 - classic `WebcatCLI.py` parses, reports version, and passes its style-rule
   shell harness;
+- classic `WebcatCLI.py --run-tests` runs Maven/JUnit/JaCoCo on a fixture;
 - profile-aware `webcat doctor` works for `cs2505` and `cs3114`;
 - the `cs2505` wrapper returns schema JSON through the classic backend;
 - `cs2505` mutation is explicitly unsupported;
 - `cs3114` direct-JUnit execution works through a hermetic fixture.
 
-The current CI does not yet prove full CS2505 Maven/JaCoCo coverage execution
-or Web-CAT authenticated submission. Those remain future phase work.
+The current CI does not yet prove a broad set of real CS2505 course projects
+through the `bin/webcat --profile cs2505` wrapper or Web-CAT authenticated
+submission. Those remain future phase work.

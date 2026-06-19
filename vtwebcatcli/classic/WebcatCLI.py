@@ -293,16 +293,23 @@ def ensure_pom(root, rules):
 
     script_dir = Path(__file__).parent
     templates = script_dir / 'templates'
+    repo_templates = Path(__file__).resolve().parents[2] / 'templates'
 
     # 1) gather the list of jar filenames (from JSON)
     jar_names = rules.get('external-jars', ['student.jar'])
 
     deps = []
-    # 2) for each name, try templates/NAME then PROJECT_ROOT/NAME
+    # 2) for each name, try classic templates, repo templates, then PROJECT_ROOT/NAME
     for name in jar_names:
         cand1 = (templates / name).resolve()
-        cand2 = (root / name).resolve()
-        chosen = cand1 if cand1.is_file() else cand2
+        cand2 = (repo_templates / name).resolve()
+        cand3 = (root / name).resolve()
+        if cand1.is_file():
+            chosen = cand1
+        elif cand2.is_file():
+            chosen = cand2
+        else:
+            chosen = cand3
 
         if chosen.is_file():
             aid = chosen.stem
@@ -316,7 +323,7 @@ def ensure_pom(root, rules):
       <systemPath>{chosen}</systemPath>
     </dependency>''')
         else:
-            logging.warning(f'⚠️ External JAR not found: looked for "{name}" in templates/ and project root')
+            logging.warning(f'⚠️ External JAR not found: looked for "{name}" in classic templates, repo templates, and project root')
 
     # 3) always include JUnit & JaCoCo deps after external jars
     deps.append('''
@@ -324,7 +331,6 @@ def ensure_pom(root, rules):
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.13.2</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.vintage</groupId>

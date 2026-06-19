@@ -29,6 +29,7 @@ jobs:
           python -m py_compile vtwebcatcli/classic/WebcatCLI.py
           python WebcatCLI.py --version
           bash vtwebcatcli/classic/tests/test_webcatcli.sh
+          bash test/classic-run-tests.sh
 
       - name: Run CLI smoke tests
         run: bash test/run.sh

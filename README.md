@@ -52,11 +52,13 @@ Implemented now:
 - `webcat test` bridge for `cs2505` through the classic VTWebCatCLI backend;
 - `.webcat.toml` walk-up config loading;
 - schema-versioned JSON output from the profile runner;
-- GitHub Actions CI for the classic checker and profile runner.
+- GitHub Actions CI for the classic checker, classic Maven/JUnit/JaCoCo
+  `--run-tests` path, and profile runner.
 
 Not complete yet:
 
-- full CS2505 Maven/JUnit/JaCoCo coverage execution proven in GitHub CI;
+- broader CS2505 course fixtures through the `bin/webcat --profile cs2505`
+  wrapper;
 - Web-CAT authenticated `targets` and `submit`;
 - credential backends;
 - Neovim commands;
@@ -100,6 +102,7 @@ Run local checks:
 python -m py_compile vtwebcatcli/classic/WebcatCLI.py
 python WebcatCLI.py --version
 bash vtwebcatcli/classic/tests/test_webcatcli.sh
+bash test/classic-run-tests.sh
 bash test/run.sh
 ```
 
