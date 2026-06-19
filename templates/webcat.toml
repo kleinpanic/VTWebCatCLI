@@ -1,0 +1,6 @@
+# Copy to .webcat.toml in a project root.
+profile = "cs3114"
+src = "src"
+threshold = "90"
+gate = "block"
+assignment_path = "Virginia Tech/CS 3114/Project 1: Movie Rater"

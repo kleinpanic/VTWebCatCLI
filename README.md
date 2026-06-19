@@ -1,224 +1,123 @@
-# WebcatCLI
+# VTWebCatCLI
 
-## Version : 1.1.4
+`VTWebCatCLI` is a local pre-submission checker for Virginia Tech Web-CAT
+Java courses. The project still supports the original Python checker workflow,
+and it is being extended with a profile-aware `webcat` runner for courses whose
+grading model is materially different.
 
-**WebcatCLI** is a self-contained Python tool that performs Web-CAT-style pre-submission checks on your Java projects:
+The goal is not "CS3114 replaces CS2505." The goal is one tool that can support
+multiple VT classes through first-class course profiles.
 
-- **Style & Formatting**  
-- **Javadoc & Annotations**  
-- **Testing Conventions**  
-- **Build & Coverage**  
-- **Cleanup & Reporting**
+## Command Surfaces
 
----
+Classic VTWebCatCLI remains available:
 
-## Table of Contents
-
-1. [Overview](#overview)  
-2. [Features](#features)  
-3. [Prerequisites](#prerequisites)  
-4. [Installation](#installation)  
-5. [Directory Layout](#directory-layout)  
-6. [Quick Start](#quick-start)  
-7. [CLI Options](#cli-options)  
-8. [Rule Matrix](#rule-matrix)  
-9. [Testing](#testing)  
-10. [Contributing](#contributing)  
-11. [License](#license)  
-
----
-
-## Overview
-
-WebcatCLI automates style checks, Javadoc validation, test execution, and coverage enforcement **before** you submit your code to a grading/CI system. It:
-
-- Generates a minimal `pom.xml` (JUnit 4 & JaCoCo) on the fly  
-- Runs `mvn clean verify` (when `--run-tests` is used)  
-- Parses JUnit test XML into a friendly tree  
-- Enforces 100% JaCoCo method & branch coverage  
-- Tracks and cleans up all generated artifacts  
-
----
-
-## Features
-
-- **Style & Formatting**  
-  - Indentation rules (spaces vs. tabs, width)  
-  - Line-length limits  
-  - Single public class per file  
-  - Static-field usage checks  
-  - Empty / unused-method detection  
-
-- **Javadoc & Annotations**  
-  - Require Javadoc on classes & methods  
-  - Enforce `@author` / `@version` tags  
-  - Require `@Override` on overridden methods  
-  - Validate `@param` / `@return` tags  
-
-- **Testing & Coverage**  
-  - `--run-tests` → `mvn clean verify`  
-  - Tree-view of JUnit results with ✅/❌/⏭️ icons  
-  - Coverage summary and gap-tree from JaCoCo XML  
-  - `--enable-cli-report` to regenerate XML via `jacococli.jar`  
-  - `--scan-impossible-branches`: scans Java source files to detect logically impossible branch conditions (predicates that always evaluate to true or false) via AST analysis.
-
-
-- **Cleanup & Reporting**  
-  - Automatic removal of `pom.xml`, `target/`, downloaded JARs  
-  - `--no-cleanup` to preserve everything  
-  - New `--cleanup` to force cleanup even in debug mode  
-  - Ctrl-C / SIGTERM handler prints a message and cleans up  
-
----
-
-## Prerequisites
-
-- **Python 3.6+**  
-- **Testing & Coverage**  
-  - `--scan-impossible-branches`: scans Java source files to detect logically impossible branch conditions (predicates that always evaluate to true or false) via AST analysis.
-- **Java 8+** & **Maven** (only for `--run-tests`)  
-- Unix-style shell (for bundled `test_webcatcli.sh`)  
-    - Legacy - not needed.  
-
----
-
-## Installation
-
-```bash
-git clone https://github.com/your-org/WebcatCLI.git
-cd WebcatCLI
-chmod +x WebcatCLI.py
-# (optional) add to PATH:
-export PATH="$PATH:$(pwd)"
+```sh
+python WebcatCLI.py --help
+python WebcatCLI.py --run-tests /path/to/java-project
 ```
 
----
+The profile-aware runner is:
 
-## Directory Layout
-
-```txt
-WebcatCLI/
-├── WebcatCLI.py
-├── README.md
-├── CHANGELOG.md
-├── templates/
-│   ├── CS1114.rules.json
-│   └── CS2114.rules.json
-└── tests/                   ← (not included in pip (future) or GH releases currently (as of 1.1.2).)
-    └── test_webcatcli.sh    ← legacy test harness
+```sh
+bin/webcat doctor
+bin/webcat test
+bin/webcat mutate
 ```
 
-> **Note:** the `tests/` folder is **not** shipped in the packaged release; it lives in the repo for CI and local development.
+Both command surfaces live in the same repository. The classic checker keeps
+the original style/Javadoc/test-convention/Maven/JaCoCo behavior. The newer
+`bin/webcat` command provides JSON output for editor and CI integration.
 
----
+## Current Course Profiles
 
-## Quick Start
+- `cs2505`: VTWebCatCLI classic checks: style, Javadoc, test conventions,
+  Maven/JUnit execution, and JaCoCo coverage parsing.
+- `cs3114`: direct Java compile, `student.jar` JUnit tests, and PIT mutation
+  testing with the course-specific mutator set.
 
-Run style & test checks:
+Additional classes should be added as new profile directories under
+`profiles/<course>/`, with course-specific logic isolated behind a backend
+rather than blended into another course's assumptions.
 
-```bash
-./WebcatCLI.py --run-tests /path/to/my-java-project
+## Status
+
+Implemented now:
+
+- original `WebcatCLI.py` entrypoint preserved;
+- classic checker relocated to `vtwebcatcli/classic/` as first-class code;
+- `webcat doctor`;
+- `webcat test` for `cs3114`;
+- `webcat mutate` for `cs3114`;
+- `webcat test` bridge for `cs2505` through the classic VTWebCatCLI backend;
+- `.webcat.toml` walk-up config loading;
+- schema-versioned JSON output from the profile runner;
+- GitHub Actions CI for the classic checker and profile runner.
+
+Not complete yet:
+
+- full CS2505 Maven/JUnit/JaCoCo coverage execution proven in GitHub CI;
+- Web-CAT authenticated `targets` and `submit`;
+- credential backends;
+- Neovim commands;
+- jar vendoring/provenance completion.
+
+## Project Config
+
+Create `.webcat.toml` in the project root.
+
+```toml
+profile = "cs3114"
+src = "Sum26P1MovieRater/src"
+threshold = "90"
+gate = "block"
+assignment_path = "Virginia Tech/CS 3114/Project 1: Movie Rater"
+
+java_bin = "/opt/homebrew/opt/openjdk@21/bin/java"
+javac_bin = "/opt/homebrew/opt/openjdk@21/bin/javac"
+student_jar = "lib/student.jar"
+junit_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.junit_4.13.2.v20240929-1000.jar"
+hamcrest_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.hamcrest_3.0.0.jar"
+pit_dir = "tools/Eclipse.app/Contents/Eclipse/plugins/org.pitest_1.6.8.v20230703-1755/lib"
+
+target_classes = "MovieRaterDB,SparseMatrix"
+target_tests = "MovieRaterTest"
 ```
 
-Read a single file from stdin:
+## Verification Notes
 
-```bash
-cat Foo.java | ./WebcatCLI.py
+Local CS3114 Project 1 verification runs through `bin/webcat`, but local PIT
+output is not the same thing as the Web-CAT mutation percentage. Web-CAT may
+use different instrumentation, hidden/reference checks, mutation targets, or
+full-precision scoring. Do not quote a local percentage as the official Web-CAT
+score unless it has been calibrated against the current submission report.
+
+## Development
+
+Run local checks:
+
+```sh
+python -m py_compile vtwebcatcli/classic/WebcatCLI.py
+python WebcatCLI.py --version
+bash vtwebcatcli/classic/tests/test_webcatcli.sh
+bash test/run.sh
 ```
 
----
+Validate profile-runner JSON:
 
-## CLI Options
-
-| Flag                    | Description                                                        |
-| ----------------------- | ------------------------------------------------------------------ |
-| `-p, --profile <name>`  | Choose `templates/<name>.rules.json` (default: CS2114)             |
-| `--max-line-length <N>` | Override maximum characters per line (`-1` to disable)             |
-| `--no-javadoc`          | Skip **all** Javadoc presence checks                               |
-| `--no-author`           | Skip `@author` tag check                                           |
-| `--no-version`          | Skip `@version` tag check                                          |
-| `--allow-globals`       | Skip static-field usage checks                                     |
-| `--allow-empty`         | Allow empty method bodies                                          |
-| `--allow-unused`        | Allow unused private methods                                       |
-| `--no-annotations`      | Skip checking for `@Test` annotations                              |
-| `--no-delta`            | Don’t require a delta in `assertEquals`                            |
-| `--no-method-cov`       | Disable 100% method coverage enforcement                           |
-| `--no-branch-cov`       | Disable 100% branch coverage enforcement                           |
-| `--no-override`         | Don’t enforce `@Override` on overridden methods                    |
-| `--run-tests`           | After style/test, run `mvn clean verify` and parse coverage        |
-| `--run-main`            | After tests (and coverage), detect & run any `main()` method       |
-| `--enable-cli-report`   | Download/run `jacococli.jar` to regenerate XML before parsing gaps |
-| `--no-cleanup`          | Preserve generated files & directories on exit                     |
-| `--cleanup`             | Force cleanup even in debug mode (overrides `--no-cleanup`)        |
-| `--delete-modules-info` | Recursivly finds + deletes modules.info files under project root   |
-| `-h, --help`            | Show usage and exit                                                |
-| `--version`             | Print version (`__version__`) and exit                             |
-
----
-
-## Rule Matrix
-
-| Rule                                 |        Default        | Configurable | Change via                          |
-| ------------------------------------ | :-------------------: | :----------: | ----------------------------------- |
-| **Indentation: spaces per indent**   |        4 spaces       |      Yes     | JSON template / `--max-line-length` |
-| **Use spaces (no tabs)**             |           ✔️          |      Yes     | JSON template                       |
-| **Max line length**                  |        80 chars       |      Yes     | `--max-line-length`, JSON           |
-| **Javadoc required (class/method)**  |           ✔️          |      Yes     | `--no-javadoc`, JSON                |
-| **`@author` required**               |           ✔️          |      Yes     | `--no-author`, JSON                 |
-| **`@version` required**              |           ✔️          |      Yes     | `--no-version`, JSON                |
-| **One public class/file**            |          ✔️           |     Yes      | JSON                                |
-| **Static-field usage**               | ✔️ (abiity to change) |     Yes      | `--allow-globals`, JSON             |
-| **Empty-method detection**           |          ✔️           |     Yes      | `--allow-empty`, JSON               |
-| **Unused-private-method detection**  |           ✔️          |      Yes     | `--allow-unused`, JSON              |
-| **`@Override` enforcement**          |           ✔️          |      Yes     | `--no-override`, JSON               |
-| **Package Javadoc (`@package`)**     |           ✔️          |      Yes     | `--no-package-annotation`, JSON     |
-| **Require preceding `@package` tag** |           ❌           |      Yes     | `--no-package-javadoc`, JSON        |
-| **Test prefix**                      |         `test`        |      Yes     | JSON                                |
-| **`@Test` annotation required**      |           ❌           |      Yes     | `--no-annotations`, JSON            |
-| **Delta in `assertEquals`**          |           ✔️          |      Yes     | `--no-delta`, JSON                  |
-| **100% method coverage**             |           ✔️          |      Yes     | `--no-method-cov`, JSON             |
-| **100% branch coverage**             |           ✔️          |      Yes     | `--no-branch-cov`, JSON             |
-
----
-
-## Testing
-
-I’ve moved the old `test_webcatcli.sh` into `tests/` for historical coverage. It:
-
-1. Creates minimal Java projects (good & bad cases).
-2. Verifies that every flag behaves as expected.
-3. Ensures legacy behavior never regresses.
-
-> **Note:** the `tests/` folder is **not** part of the release tar—developers can clone the repo and run:
-> **Note**: The Test Program Does Not Respect or Consider the JSON configurations when creating and applying these tests. Needs to be updated for next release.
-
-```bash
-cd tests
-chmod +x test_webcatcli.sh
-./test_webcatcli.sh
+```sh
+bin/webcat doctor | python3 -m json.tool
+bin/webcat --profile cs2505 doctor | python3 -m json.tool
+bin/webcat --profile cs3114 doctor | python3 -m json.tool
 ```
 
---- 
+## Adding A Course
 
-## License
+See `docs/course-profiles.md`. A new course should add a profile, describe its
+tools and thresholds, and implement only the backend behavior that actually
+matches that course.
 
-### WebcatCLI
-WebcatCLI itself is distributed under the [MIT License](LICENSE).
+## Publishing
 
-### Bundled Dependencies
-This repository distributes **student.jar** and **jacococli.jar** as part of the `--run-tests` workflow. You must comply with their licenses:
-
-For the student.jar license file please unpackage the .jar file and find it yourself. 
-Or open the licenses dir
-
-- **Student-Library** (`student.jar`)  
-  Licensed under the GNU Lesser General Public License v2.1.  
-
-- **JUnit** (via Maven dependencies bundled in the generated POM)  
-  Portions of JUnit are under the Eclipse Public License 1.0.  
-
-- **JaCoCo CLI** (`jacococli.jar`)  
-  Licensed under the Apache License 2.0.  
-
-By distributing these JARs you agree to the terms of their respective licenses.
-
+See `PUBLISHING.md`. The upgrade should land on `main` through the existing
+`kleinpanic/VTWebCatCLI` repository history, not as an unrelated replacement.

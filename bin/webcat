@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -u
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+. "$ROOT_DIR/lib/json.sh"
+. "$ROOT_DIR/lib/config.sh"
+. "$ROOT_DIR/lib/profile.sh"
+. "$ROOT_DIR/lib/cs3114.sh"
+. "$ROOT_DIR/lib/cs2505.sh"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: webcat [--profile NAME] <command>
+
+commands:
+  doctor    report local tool/config/profile readiness
+  test      run profile-specific local tests
+  mutate    run profile-specific mutation analysis
+EOF
+}
+
+COMMAND=""
+PROFILE_OVERRIDE=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --profile)
+      if [ "$#" -lt 2 ]; then
+        json_error "unknown" "bad_args" "--profile requires a value" "Use --profile cs2505 or --profile cs3114."
+        exit 2
+      fi
+      PROFILE_OVERRIDE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      json_error "unknown" "bad_args" "unknown option: $1" "Run webcat --help."
+      exit 2
+      ;;
+    *)
+      COMMAND="$1"
+      shift
+      break
+      ;;
+  esac
+done
+
+if [ -z "$COMMAND" ]; then
+  json_error "unknown" "bad_args" "missing command" "Run webcat --help."
+  exit 2
+fi
+
+if ! config_load "$(pwd)" "$PROFILE_OVERRIDE"; then
+  exit 2
+fi
+
+if ! profile_load "$WEBCAT_PROFILE"; then
+  json_error "$COMMAND" "unknown_profile" "unknown profile: $WEBCAT_PROFILE" "Use cs2505 or cs3114."
+  exit 2
+fi
+
+case "$COMMAND" in
+  doctor)
+    java_path="$(cs3114_java_bin)"
+    javac_path="$(cs3114_javac_bin)"
+    java_ok=false
+    javac_ok=false
+    [ -x "$java_path" ] && java_ok=true
+    [ -x "$javac_path" ] && javac_ok=true
+
+    missing_tools=""
+    old_ifs="$IFS"
+    IFS=','
+    for tool_name in $PROFILE_REQUIRED_TOOLS; do
+      IFS="$old_ifs"
+      if [ -n "$tool_name" ] && ! command -v "$tool_name" >/dev/null 2>&1; then
+        if [ -z "$missing_tools" ]; then
+          missing_tools="$tool_name"
+        else
+          missing_tools="$missing_tools,$tool_name"
+        fi
+      fi
+      IFS=','
+    done
+    IFS="$old_ifs"
+
+    root="$(project_root)"
+    if [ "$WEBCAT_PROFILE" = "cs3114" ] && [ -n "$WEBCAT_CONFIG_PATH" ]; then
+      required_jars="$(abs_path "${WEBCAT_STUDENT_JAR:-lib/student.jar}" "$root")"
+      [ -n "$WEBCAT_JUNIT_JAR" ] && required_jars="$required_jars,$(abs_path "$WEBCAT_JUNIT_JAR" "$root")"
+      [ -n "$WEBCAT_HAMCREST_JAR" ] && required_jars="$required_jars,$(abs_path "$WEBCAT_HAMCREST_JAR" "$root")"
+      if [ -n "$WEBCAT_PIT_DIR" ]; then
+        pit_dir_abs="$(abs_path "$WEBCAT_PIT_DIR" "$root")"
+        required_jars="$required_jars,$pit_dir_abs/pitest-command-line.jar,$pit_dir_abs/pitest.jar,$pit_dir_abs/pitest-entry.jar,$pit_dir_abs/pitest-html-report.jar"
+      fi
+    else
+      required_jars="$PROFILE_TEST_JARS"
+      if [ -n "$PROFILE_MUTATION_JARS" ]; then
+        if [ -n "$required_jars" ]; then
+          required_jars="$required_jars,$PROFILE_MUTATION_JARS"
+        else
+          required_jars="$PROFILE_MUTATION_JARS"
+        fi
+      fi
+    fi
+
+    missing_jars=""
+    old_ifs="$IFS"
+    IFS=','
+    for jar_name in $required_jars; do
+      IFS="$old_ifs"
+      if [ -n "$jar_name" ]; then
+        case "$jar_name" in
+          /*) jar_path="$jar_name" ;;
+          *) jar_path="$ROOT_DIR/jar/$jar_name" ;;
+        esac
+      else
+        jar_path=""
+      fi
+      if [ -n "$jar_path" ] && [ ! -f "$jar_path" ]; then
+        if [ -z "$missing_jars" ]; then
+          missing_jars="$jar_name"
+        else
+          missing_jars="$missing_jars,$jar_name"
+        fi
+      fi
+      IFS=','
+    done
+    IFS="$old_ifs"
+
+    json_doctor "$WEBCAT_PROFILE" "$WEBCAT_CONFIG_PATH" "$java_ok" "$java_path" "$javac_ok" "$javac_path" "$PROFILE_KIND" "$PROFILE_DESCRIPTION" "$PROFILE_COMMANDS" "$PROFILE_TEST_BACKEND" "$PROFILE_STYLE_BACKEND" "$PROFILE_COVERAGE_BACKEND" "$PROFILE_MUTATION_BACKEND" "$PROFILE_COMPILE_RELEASE" "$PROFILE_REQUIRED_TOOLS" "$missing_tools" "$PROFILE_TEST_JARS" "$PROFILE_MUTATION_JARS" "$missing_jars" "$PROFILE_THRESHOLD_DEFAULT"
+    ;;
+  test)
+    if [ "$WEBCAT_PROFILE" = "cs3114" ]; then
+      cs3114_test
+    elif [ "$WEBCAT_PROFILE" = "cs2505" ]; then
+      cs2505_test
+    else
+      json_unsupported "test" "test is not implemented yet for profile: $WEBCAT_PROFILE"
+      exit 2
+    fi
+    ;;
+  mutate)
+    if [ "$WEBCAT_PROFILE" = "cs3114" ]; then
+      cs3114_mutate
+    else
+      json_unsupported "mutate" "mutate is not supported for profile: $WEBCAT_PROFILE"
+      exit 2
+    fi
+    ;;
+  *)
+    json_error "$COMMAND" "unknown_command" "unknown command: $COMMAND" "Supported commands: doctor, test, mutate."
+    exit 2
+    ;;
+esac
