@@ -15,15 +15,33 @@ remote `main`.
 
 ## Safe Publication Flow
 
+Two public branches exist:
+
+- `profile-aware-upgrade`: clean orphan branch containing only public-safe
+  upgrade files. CI passed, but GitHub cannot open it as a PR because it has no
+  common history with `main`.
+- `profile-aware-upgrade-pr`: PR-compatible branch based on remote `main`, with
+  the upgrade tree overlaid. This is the branch used for the draft PR.
+
+The draft PR is:
+
+```text
+https://github.com/kleinpanic/VTWebCatCLI/pull/1
+```
+
+If recreating the safe flow:
+
 1. Add the existing GitHub repo as `origin`.
-2. Push this work to a review branch:
+2. Push clean public work to a review branch:
 
    ```sh
    git push -u origin HEAD:refs/heads/profile-aware-upgrade
    ```
 
-3. Open a pull request or compare branch in GitHub.
-4. Decide whether to:
+3. For an actual PR, create a second branch from `origin/main` and overlay the
+   same public tree so GitHub has common history.
+4. Open a draft pull request.
+5. Decide whether to:
    - merge the upgrade branch into the original history,
    - reset the repo intentionally after archiving the old state,
    - or publish under a separate repository name.
