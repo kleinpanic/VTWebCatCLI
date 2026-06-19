@@ -18,6 +18,19 @@ tracked="$(git ls-files)"
 printf '%s\n' "$tracked" | grep -E '(^|/)__pycache__/|\.pyc$' >/dev/null &&
   fail "tracked Python bytecode is not allowed"
 
+case_conflicts="$(printf '%s\n' "$tracked" | awk '
+  {
+    key = tolower($0)
+    if (seen[key] != "" && seen[key] != $0) {
+      print seen[key] " <-> " $0
+    }
+    seen[key] = $0
+  }')"
+[ -z "$case_conflicts" ] || {
+  printf '%s\n' "$case_conflicts" >&2
+  fail "tracked paths must not differ only by case"
+}
+
 printf '%s\n' "$tracked" | grep -E '^legacy/VTWebCatCLI/' >/dev/null &&
   fail "duplicate classic implementation tree is not allowed"
 

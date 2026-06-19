@@ -16,7 +16,7 @@ tar czf "$tmp/package/webcatcli-test.tar.gz" \
   WebcatCLI.py bin lib profiles vtwebcatcli \
   templates doc docs lua plugin tests test \
   README.md CHANGELOG.md TODO.MD PUBLISHING.md PROVENANCE.md \
-  LICENSE LICENSES licenses requirements.txt
+  LICENSE licenses requirements.txt
 
 tar xzf "$tmp/package/webcatcli-test.tar.gz" -C "$tmp/extract"
 
