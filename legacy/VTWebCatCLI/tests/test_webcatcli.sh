@@ -50,7 +50,7 @@ fi
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # ─── Locate your CLI ───────────────────────────────────────────────────────
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="$ROOT/WebcatCLI.py"
 if [ ! -f "$CLI" ]; then
   echo -e "${RED}Error:${RESET} Cannot find WebcatCLI.py at $CLI" >&2
@@ -89,6 +89,8 @@ public class Good {
 
     /**
      * Provide a custom toString().
+     *
+     * @return description of this object
      */
     @Override
     public String toString() {
@@ -147,6 +149,8 @@ write_sub_without_override() {
 public class Sub extends Good {
     /**
      * Overrides toString but missing @Override annotation.
+     *
+     * @return description of this object
      */
     public String toString() {
         return "Sub";
@@ -206,4 +210,3 @@ else
   printf "\n${RED}Some tests FAILED. Review above.${RESET}\n"
   exit 1
 fi
-

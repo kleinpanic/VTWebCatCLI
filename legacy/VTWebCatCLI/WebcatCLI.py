@@ -610,6 +610,34 @@ def check_file(path, rules):
         if javadoc:
             check_javadoc_params_and_return(line_no, name, params, return_type, javadoc, errs)
 
+    # OVERRIDE TAGS
+    # The legacy checker works one file at a time, so it cannot reliably infer
+    # every superclass method. It can still catch Object overrides, which are
+    # common in CS fixtures and do not need cross-file type resolution.
+    if s.get('require_override'):
+        object_overrides = {'toString', 'equals', 'hashCode'}
+        for m in re.finditer(r'^\s*(public|protected)\s+\w[\w<>\[\]]*\s+(\w+)\(.*\)\s*\{', text, re.M):
+            method_name = m.group(2)
+            if method_name not in object_overrides:
+                continue
+            ln_no = text[:m.start()].count('\n') + 1
+            idx = ln_no - 2
+            has_override = False
+            while idx >= 0:
+                stripped = lines[idx].strip()
+                if stripped == '':
+                    idx -= 1
+                    continue
+                if stripped == '@Override':
+                    has_override = True
+                    break
+                if stripped.startswith('@') or stripped.endswith('*/') or stripped.startswith('*') or stripped.startswith('/**'):
+                    idx -= 1
+                    continue
+                break
+            if not has_override:
+                errs.append(f'Line {ln_no}: missing @Override for method {method_name}()')
+
     return errs
 
 def parse_test_reports_tree(report_dir):
@@ -688,7 +716,7 @@ def main():
     p.add_argument(
         '--ignore-coverage-on-main',
         action='store_true',
-        help='when used with --run-main, skip the 100% branch coverage requirement and retain compiled classes')
+        help='when used with --run-main, skip the 100%% branch coverage requirement and retain compiled classes')
     p.add_argument('--external-jar', dest='external_jars',
                nargs='+',
                help='paths to external JARs for tests')
@@ -993,4 +1021,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
