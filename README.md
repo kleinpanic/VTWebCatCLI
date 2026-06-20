@@ -53,9 +53,10 @@ canonical home: `vtwebcatcli/classic.py` for the original Python checker and
 - `cs2505`: VTWebCatCLI classic checks: style, Javadoc, test conventions,
   Maven/JUnit execution, and JaCoCo coverage parsing.
 - `cs3114`: direct Java compile, `student.jar` JUnit tests, JaCoCo coverage,
-  and PIT mutation testing with the course-specific mutator set. This is a
-  local preflight, not a complete replacement for the official Web-CAT report
-  yet.
+  and PIT mutation testing with the course-specific mutator set. Mutation JSON
+  includes exact PIT status buckets, target-class/test metadata, and the
+  `killed / total` formula. This is a local preflight, not a complete
+  replacement for the official Web-CAT report yet.
 
 Additional classes should be added as new profile directories under
 `profiles/<course>/`, with course-specific logic isolated behind a backend

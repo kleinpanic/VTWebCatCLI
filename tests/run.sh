@@ -120,6 +120,37 @@ pass "cs2505 mutation unsupported"
 
 cleanup
 tmp="${TMPDIR:-/tmp}/webcat-test-$$"
+mkdir -p "$tmp"
+cat > "$tmp/mutations.csv" <<'EOF'
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,10,KILLED,MovieRaterTest
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,11,SURVIVED,none
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,12,LINES_NEEDING_BETTER_TESTING,none
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,13,NO_COVERAGE,none
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,14,TIMED_OUT,MovieRaterTest
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,15,RUN_ERROR,none
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,16,NON_VIABLE,none
+SparseMatrix.java,SparseMatrix,Mutator,rowScore,17,STRANGE_STATUS,none
+EOF
+out="$(ROOT_DIR="$ROOT" CSV_FILE="$tmp/mutations.csv" sh -c '. "$ROOT_DIR/lib/json.sh"; json_mutation_result_from_csv cs3114 "$CSV_FILE" "SparseMatrix,MovieRaterDB" false "MovieRaterTest" false')"
+contains "$out" '"killed":1' || fail "mutation parser counts killed"
+contains "$out" '"survived":2' || fail "mutation parser counts survived and lines needing testing"
+contains "$out" '"no_coverage":1' || fail "mutation parser counts no coverage"
+contains "$out" '"timed_out":1' || fail "mutation parser counts timeouts"
+contains "$out" '"run_error":1' || fail "mutation parser counts run errors"
+contains "$out" '"non_viable":1' || fail "mutation parser counts non-viable mutations"
+contains "$out" '"other":1' || fail "mutation parser preserves unknown PIT statuses"
+contains "$out" '"undetected":7' || fail "mutation parser counts every non-killed mutation"
+contains "$out" '"total":8' || fail "mutation parser counts total rows"
+contains "$out" '"pct":12.5' || fail "mutation parser reports killed over total"
+contains "$out" '"formula":"killed / total"' || fail "mutation parser documents percentage formula"
+contains "$out" '"target_classes":["SparseMatrix","MovieRaterDB"]' || fail "mutation parser reports target classes"
+contains "$out" '"target_classes_inferred":false' || fail "mutation parser reports explicit target classes"
+contains "$out" '"LINES_NEEDING_BETTER_TESTING":1' || fail "mutation parser includes exact PIT status counts"
+contains "$out" '"STRANGE_STATUS":1' || fail "mutation parser includes unknown status counts"
+pass "cs3114 mutation CSV status parser"
+
+cleanup
+tmp="${TMPDIR:-/tmp}/webcat-test-$$"
 mkdir -p "$tmp/fake-junit/org/junit/runner" "$tmp/fake-junit/org/junit" "$tmp/src"
 cat > "$tmp/fake-junit/org/junit/Test.java" <<'EOF'
 package org.junit;
@@ -187,7 +218,8 @@ contains "$out" '"coverage":{"schema":1,"command":"coverage","ok":false' || fail
 contains "$out" '"mutation":{"schema":1,"command":"mutate","ok":false' || fail "cs3114 report embeds mutation error"
 contains "$out" '"submission":{"root":' || fail "cs3114 report embeds submission summary"
 contains "$out" '"source_files":[' || fail "cs3114 report lists source files"
-contains "$out" '"local_jacoco_coverage"' || fail "cs3114 report labels JaCoCo coverage parity"
+contains "$out" '"local_jacoco_coverage_uncalibrated"' || fail "cs3114 report labels JaCoCo as uncalibrated"
+contains "$out" '"local_pit_mutation_uncalibrated"' || fail "cs3114 report labels PIT as uncalibrated"
 contains "$out" '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","authenticated_submit"]' || fail "cs3114 report labels Web-CAT-only fields"
 pass "cs3114 report parity labels"
 

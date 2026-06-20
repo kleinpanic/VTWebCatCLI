@@ -117,24 +117,57 @@ json_classic_result() {
   printf '}\n'
 }
 
-json_mutation_result() {
-  profile="$1"
-  total="$2"
-  killed="$3"
-  survived="$4"
-  csv_file="$5"
-  pct="0"
-  if [ "$total" -gt 0 ]; then
-    pct="$(awk "BEGIN { printf \"%.1f\", ($killed * 100) / $total }")"
-  fi
+json_mutation_count_status() {
+  csv_file="$1"
+  status="$2"
+  awk -F, -v want="$status" '$6 == want { n++ } END { print n + 0 }' "$csv_file"
+}
 
-  printf '{"schema":1,"command":"mutate","ok":true,"profile":'
-  json_string "$profile"
-  printf ',"coverage":{"killed":%s,"survived":%s,"total":%s,"pct":%s},"survivors":[' "$killed" "$survived" "$total" "$pct"
+json_mutation_count_survived() {
+  csv_file="$1"
+  awk -F, '$6 == "SURVIVED" || $6 == "LINES_NEEDING_BETTER_TESTING" { n++ } END { print n + 0 }' "$csv_file"
+}
 
+json_mutation_count_other() {
+  csv_file="$1"
+  awk -F, '
+    $6 != "KILLED" &&
+    $6 != "SURVIVED" &&
+    $6 != "LINES_NEEDING_BETTER_TESTING" &&
+    $6 != "NO_COVERAGE" &&
+    $6 != "TIMED_OUT" &&
+    $6 != "MEMORY_ERROR" &&
+    $6 != "RUN_ERROR" &&
+    $6 != "NON_VIABLE" {
+      n++
+    }
+    END { print n + 0 }
+  ' "$csv_file"
+}
+
+json_mutation_status_counts() {
+  csv_file="$1"
   first=true
-  awk -F, '$6 != "KILLED" { print $1 "\t" $5 "\t" $3 "\t" $4 "\t" $2 "\t" $6 }' "$csv_file" |
-  while IFS='	' read -r file line mutator method class_name status; do
+  printf '{'
+  awk -F, '{ c[$6]++ } END { for (status in c) print status "\t" c[status] }' "$csv_file" | sort |
+  while IFS='	' read -r status count; do
+    if [ "$first" = "true" ]; then
+      first=false
+    else
+      printf ','
+    fi
+    json_string "$status"
+    printf ':%s' "$count"
+  done
+  printf '}'
+}
+
+json_mutation_rows() {
+  csv_file="$1"
+  first=true
+  printf '['
+  awk -F, '$6 != "KILLED" { print $1 "\t" $5 "\t" $3 "\t" $4 "\t" $2 "\t" $6 "\t" $7 }' "$csv_file" |
+  while IFS='	' read -r file line mutator method class_name status killing_test; do
     if [ "$first" = "true" ]; then
       first=false
     else
@@ -150,9 +183,63 @@ json_mutation_result() {
     json_string "$class_name"
     printf ',"status":'
     json_string "$status"
+    printf ',"killing_test":'
+    json_string "$killing_test"
     printf '}'
   done
-  printf ']}\n'
+  printf ']'
+}
+
+json_mutation_result_from_csv() {
+  profile="$1"
+  csv_file="$2"
+  target_classes="$3"
+  target_classes_inferred="$4"
+  target_tests="$5"
+  target_tests_inferred="$6"
+  total="$(awk 'END { print NR }' "$csv_file")"
+  killed="$(json_mutation_count_status "$csv_file" KILLED)"
+  survived="$(json_mutation_count_survived "$csv_file")"
+  no_coverage="$(json_mutation_count_status "$csv_file" NO_COVERAGE)"
+  timed_out="$(json_mutation_count_status "$csv_file" TIMED_OUT)"
+  memory_error="$(json_mutation_count_status "$csv_file" MEMORY_ERROR)"
+  run_error="$(json_mutation_count_status "$csv_file" RUN_ERROR)"
+  non_viable="$(json_mutation_count_status "$csv_file" NON_VIABLE)"
+  other="$(json_mutation_count_other "$csv_file")"
+  undetected=$((total - killed))
+  pct="0"
+  if [ "$total" -gt 0 ]; then
+    pct="$(awk "BEGIN { printf \"%.1f\", ($killed * 100) / $total }")"
+  fi
+
+  printf '{"schema":1,"command":"mutate","ok":true,"profile":'
+  json_string "$profile"
+  printf ',"engine":"pit","coverage":{"killed":%s,"survived":%s,"no_coverage":%s,"timed_out":%s,"memory_error":%s,"run_error":%s,"non_viable":%s,"other":%s,"undetected":%s,"total":%s,"pct":%s,"formula":"killed / total"},' "$killed" "$survived" "$no_coverage" "$timed_out" "$memory_error" "$run_error" "$non_viable" "$other" "$undetected" "$total" "$pct"
+  printf '"target_classes":'
+  json_csv_array "$target_classes"
+  printf ',"target_classes_inferred":'
+  json_bool "$target_classes_inferred"
+  printf ',"target_tests":'
+  json_csv_array "$target_tests"
+  printf ',"target_tests_inferred":'
+  json_bool "$target_tests_inferred"
+  printf ',"status_counts":'
+  json_mutation_status_counts "$csv_file"
+  printf ',"survivors":'
+  json_mutation_rows "$csv_file"
+  printf ',"undetected":'
+  json_mutation_rows "$csv_file"
+  printf '}\n'
+}
+
+json_mutation_result() {
+  profile="$1"
+  csv_file="$2"
+  target_classes="$3"
+  target_classes_inferred="$4"
+  target_tests="$5"
+  target_tests_inferred="$6"
+  json_mutation_result_from_csv "$profile" "$csv_file" "$target_classes" "$target_classes_inferred" "$target_tests" "$target_tests_inferred"
 }
 
 json_doctor() {

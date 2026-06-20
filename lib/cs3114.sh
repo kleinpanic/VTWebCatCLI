@@ -370,8 +370,16 @@ cs3114_mutate() {
   csv_file="$report_dir/mutations.csv"
   target_classes="$WEBCAT_TARGET_CLASSES"
   target_tests="$WEBCAT_TARGET_TESTS"
-  [ -n "$target_classes" ] || target_classes="$(find "$src_dir" -name '*.java' ! -name '*Test.java' -type f | sed "s#^$src_dir/##; s#/#.#g; s#\\.java\$##" | paste -sd, -)"
-  [ -n "$target_tests" ] || target_tests="$(cs3114_class_names "$src_dir" Test)"
+  target_classes_inferred=false
+  target_tests_inferred=false
+  if [ -z "$target_classes" ]; then
+    target_classes="$(find "$src_dir" -name '*.java' ! -name '*Test.java' -type f | sed "s#^$src_dir/##; s#/#.#g; s#\\.java\$##" | paste -sd, -)"
+    target_classes_inferred=true
+  fi
+  if [ -z "$target_tests" ]; then
+    target_tests="$(cs3114_class_names "$src_dir" Test)"
+    target_tests_inferred=true
+  fi
 
   for jar_name in pitest-command-line.jar pitest.jar pitest-entry.jar pitest-html-report.jar; do
     if [ ! -f "$pit_dir/$jar_name" ]; then
@@ -402,10 +410,7 @@ cs3114_mutate() {
     return 1
   fi
 
-  total="$(awk 'END { print NR }' "$csv_file")"
-  killed="$(awk -F, '$6 == "KILLED" { n++ } END { print n + 0 }' "$csv_file")"
-  survived="$(awk -F, '$6 != "KILLED" { n++ } END { print n + 0 }' "$csv_file")"
-  json_mutation_result "$WEBCAT_PROFILE" "$total" "$killed" "$survived" "$csv_file"
+  json_mutation_result "$WEBCAT_PROFILE" "$csv_file" "$target_classes" "$target_classes_inferred" "$target_tests" "$target_tests_inferred"
 }
 
 cs3114_json_file_array() {
@@ -526,16 +531,19 @@ cs3114_report() {
 
   if [ "$test_status" -eq 0 ]; then
     coverage_json="$(cs3114_coverage)"
+    coverage_status="$?"
     mutation_json="$(cs3114_mutate)"
     mutation_status="$?"
   else
     coverage_json='null'
+    coverage_status=2
     mutation_json='null'
     mutation_status=2
   fi
 
   ok=true
   [ "$test_status" -ne 0 ] && ok=false
+  [ "$coverage_status" -ne 0 ] && ok=false
   [ "$mutation_status" -ne 0 ] && ok=false
 
   printf '{"schema":1,"command":"report","ok":'
@@ -546,10 +554,10 @@ cs3114_report() {
   cs3114_source_report
   printf '}'
   printf ',"webcat_parity":{'
-  printf '"matches":["java_compile","student_junit_tests","local_jacoco_coverage","local_pit_mutation","local_submission_shape_checks","local_source_file_summary"],'
-  printf '"partial":["per_file_mutation_targets","source_rendered_report","style_shape_checks","coverage_threshold_mapping"],'
+  printf '"matches":["java_compile","student_junit_tests","local_submission_shape_checks","local_source_file_summary"],'
+  printf '"partial":["local_jacoco_coverage_uncalibrated","local_pit_mutation_uncalibrated","per_file_mutation_targets","source_rendered_report","style_shape_checks","coverage_threshold_mapping"],'
   printf '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","authenticated_submit"],'
   printf '"note":'
-  json_string "This is a local preflight report, not the official CS3114 Web-CAT report."
+  json_string "This is a local preflight report, not the official CS3114 Web-CAT report. Local PIT/JaCoCo results are useful but not calibrated to hidden reference tests or Web-CAT scoring metadata."
   printf '}}\n'
 }

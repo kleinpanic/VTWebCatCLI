@@ -13,8 +13,11 @@ The current CLI proves:
 
 - Java compilation with the configured Java release.
 - Student JUnit tests through `student.jar`.
-- Local JaCoCo coverage over configured target classes.
-- Local PIT mutation coverage for configured target classes and tests.
+- Local JaCoCo coverage over configured target classes. This is not the
+  official Web-CAT coverage calculation.
+- Local PIT mutation coverage for configured target classes and tests. The CLI
+  now reports exact PIT status buckets so non-killed mutations are not all
+  collapsed into one vague category.
 - A `report` command that combines local checks and explicitly labels
   Web-CAT-only fields as unsupported.
 - JSON output suitable for editor or CI consumption.
@@ -47,8 +50,8 @@ Those unsupported items can be improved in two different ways:
 | Design/readability | `/50.0 <Awaiting Staff>` | Missing |
 | Style/coding | `10.0/10.0` plus per-file remarks/deductions | Missing |
 | Correctness/testing | `50.0/50.0` | Partial, inferred only from public tests, local JaCoCo, and local mutation |
-| Per-file mutation | `MovieRaterDB.java 100.0%`, `SparseMatrix.java 93.8%` | Partial, local PIT survivors and aggregate percent only |
-| Coverage counters | instruction/branch/line/method/class counters | Partial, local JaCoCo over configured target classes |
+| Per-file mutation | `MovieRaterDB.java 100.0%`, `SparseMatrix.java 93.8%` | Partial, uncalibrated local PIT status buckets and aggregate percent only |
+| Coverage counters | instruction/branch/line/method/class counters | Partial, uncalibrated local JaCoCo over configured target classes |
 | Problem coverage | `100%` from reference-test comparison | Missing, depends on Web-CAT reference implementation |
 | Valid test percentage | `100%` from running tests against reference implementation | Missing, depends on Web-CAT reference implementation |
 | Student test run | pass/failure/error counts for submitted tests | Matched for local JUnit test execution |
@@ -77,7 +80,8 @@ bin/webcat mutate
 reports:
 
 ```text
-160/162 killed, 98.8%
+156/158 killed, 98.7%
+non-killed statuses: LINES_NEEDING_BETTER_TESTING = 2
 ```
 
 ```text
@@ -85,16 +89,16 @@ bin/webcat report
 ```
 
 returns local test, JaCoCo coverage, mutation, and submission-shape JSON plus a
-`webcat_parity` block. That block is deliberately explicit about unsupported
-official Web-CAT fields so consumers do not mistake the local report for the
-official grader report.
+`webcat_parity` block. That block deliberately lists local JaCoCo and local PIT
+as partial, uncalibrated checks so consumers do not mistake the local report for
+the official grader report.
 
 The official PDF report for an earlier submission reported `93.8%` for
 `SparseMatrix.java` and `100.0%` for `MovieRaterDB.java`. Those values are not
 directly interchangeable with the local CLI result because the local run uses
-the current working tree and local JaCoCo/PIT invocations, while Web-CAT uses
-its own submission snapshot, instrumentation, targets, reference-test
-comparison, and full-precision scoring.
+the current working tree, local JaCoCo/PIT invocations, and configured or
+inferred target classes/tests, while Web-CAT uses its own submission snapshot,
+instrumentation, targets, reference-test comparison, and full-precision scoring.
 
 ## Required Work For Replacement-Level CS3114 Support
 
