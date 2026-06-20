@@ -98,16 +98,18 @@ export PATH="$PATH:$(pwd)"
 ```txt
 WebcatCLI/
 ├── WebcatCLI.py
+├── vtwebcatcli/
+│   └── classic.py
 ├── README.md
 ├── CHANGELOG.md
 ├── templates/
-│   ├── CS1114.rules.json
 │   └── CS2114.rules.json
-└── tests/                   ← (not included in pip (future) or GH releases currently (as of 1.1.2).)
-    └── test_webcatcli.sh    ← classic checker test harness
+└── tests/
+    ├── classic-webcatcli.sh ← classic checker test harness
+    └── test_webcatcli.sh    ← compatibility test wrapper
 ```
 
-> **Note:** the `tests/` folder is **not** shipped in the packaged release; it lives in the repo for CI and local development.
+> **Note:** `WebcatCLI.py` is a compatibility shim. The implementation lives in `vtwebcatcli/classic.py`.
 
 ---
 

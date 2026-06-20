@@ -2,4 +2,4 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/vtwebcatcli/classic/tests/test_webcatcli.sh" "$@"
+exec "$ROOT/tests/classic-webcatcli.sh" "$@"

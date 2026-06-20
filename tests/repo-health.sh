@@ -34,16 +34,27 @@ case_conflicts="$(printf '%s\n' "$tracked" | awk '
 printf '%s\n' "$tracked" | grep -E '^legacy/VTWebCatCLI/' >/dev/null &&
   fail "duplicate classic implementation tree is not allowed"
 
+private_patterns='(^|/)(\.env|\.webcat\.toml|\.webcat\.local\.toml|\.webcat\.secrets|\.planning)(/|$)|(^|/)(Web-CAT\.pdf|student-submission\.jar)$|(^|/)(id_rsa|id_ed25519)(\.pub)?$|(\.pem|\.p12|\.jks|\.key)$|(^|/)(cookies?|sessions?|secrets?|tokens?)(/|$)'
+private_hits="$(printf '%s\n' "$tracked" | grep -Ei "$private_patterns" || true)"
+if [ -n "$private_hits" ]; then
+  printf '%s\n' "$private_hits" >&2
+  fail "private config, reports, credentials, or local submission artifacts must not be tracked"
+fi
+
 [ ! -e legacy/VTWebCatCLI ] || fail "legacy/VTWebCatCLI should not exist"
 [ ! -e .planning ] || fail ".planning must stay off public main"
 [ ! -e doc ] || fail "use docs/, not duplicate top-level doc/"
 [ ! -e test ] || fail "use tests/, not duplicate top-level test/"
 [ ! -e lua ] || fail "Neovim integration belongs under plugin/, not duplicate top-level lua/"
+[ ! -e vtwebcatcli/classic ] || fail "classic source is vtwebcatcli/classic.py, not a nested duplicate directory"
 
 for path in \
   WebcatCLI.py \
+  vtwebcatcli/classic.py \
   requirements.txt \
   tests/test_webcatcli.sh \
+  tests/classic-webcatcli.sh \
+  docs/classic/README.md \
   docs/classic/_webcatcli \
   docs/classic/webcatcli.1 \
   docs/classic/webcatcli.bash \
@@ -62,8 +73,9 @@ done
 [ -x WebcatCLI.py ] || fail "WebcatCLI.py must be executable"
 [ -x bin/webcat ] || fail "bin/webcat must be executable"
 [ -x tests/test_webcatcli.sh ] || fail "tests/test_webcatcli.sh must be executable"
+[ -x tests/classic-webcatcli.sh ] || fail "tests/classic-webcatcli.sh must be executable"
 
-python3 -m py_compile WebcatCLI.py vtwebcatcli/classic/WebcatCLI.py
+python3 -m py_compile WebcatCLI.py vtwebcatcli/classic.py
 
 if rg -n '\blegacy\b' README.md PUBLISHING.md PROVENANCE.md docs lib profiles .github WebcatCLI.py >/tmp/webcat-legacy-word.out; then
   cat /tmp/webcat-legacy-word.out >&2

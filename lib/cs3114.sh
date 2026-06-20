@@ -182,6 +182,118 @@ cs3114_mutate() {
   json_mutation_result "$WEBCAT_PROFILE" "$total" "$killed" "$survived" "$csv_file"
 }
 
+cs3114_json_file_array() {
+  file="$1"
+  first=true
+  printf '['
+  if [ -f "$file" ]; then
+    while IFS= read -r item; do
+      if [ -n "$item" ]; then
+        if [ "$first" = "true" ]; then
+          first=false
+        else
+          printf ','
+        fi
+        json_string "$item"
+      fi
+    done < "$file"
+  fi
+  printf ']'
+}
+
+cs3114_source_report() {
+  root="$(project_root)"
+  src_dir="$(abs_path "$WEBCAT_SRC" "$root")"
+  submission_root="$(dirname "$src_dir")"
+  tmp_dir="$root/.webcat-build/report"
+  mkdir -p "$tmp_dir"
+  generated_file="$tmp_dir/generated.txt"
+  nested_file="$tmp_dir/nested-java.txt"
+  forbidden_file="$tmp_dir/forbidden.txt"
+  issue_file="$tmp_dir/issues.txt"
+  : > "$generated_file"
+  : > "$nested_file"
+  : > "$forbidden_file"
+  : > "$issue_file"
+
+  if [ -d "$submission_root" ]; then
+    find "$submission_root" \( -path '*/bin/*' -o -name '*.class' \) -type f |
+      sed "s#^$submission_root/##" | sort > "$generated_file"
+  fi
+
+  if [ -d "$src_dir" ]; then
+    find "$src_dir" -mindepth 2 -name '*.java' -type f |
+      sed "s#^$src_dir/##" | sort > "$nested_file"
+    grep -RInE 'ArrayList|HashMap|Vector|LinkedList|TreeMap|TreeSet|HashSet|Map<|List<|java\.util|System\.out' "$src_dir" --include='*.java' 2>/dev/null |
+      sed "s#^$src_dir/##" > "$forbidden_file" || true
+  fi
+
+  [ -s "$generated_file" ] && printf '%s\n' "generated_artifacts: remove local build outputs from the submission tree" >> "$issue_file"
+  [ -s "$nested_file" ] && printf '%s\n' "nested_source: CS3114 expects a flat src directory" >> "$issue_file"
+  [ -s "$forbidden_file" ] && printf '%s\n' "forbidden_structures: implementation source references off-limits APIs or System.out" >> "$issue_file"
+
+  printf '{"root":'
+  json_string "$submission_root"
+  printf ',"src":'
+  json_string "$src_dir"
+  printf ',"flat_src":'
+  if [ -s "$nested_file" ]; then json_bool false; else json_bool true; fi
+  printf ',"generated_artifacts":'
+  cs3114_json_file_array "$generated_file"
+  printf ',"nested_source_files":'
+  cs3114_json_file_array "$nested_file"
+  printf ',"forbidden_hits":'
+  cs3114_json_file_array "$forbidden_file"
+  printf ',"source_files":['
+
+  first=true
+  if [ -d "$src_dir" ]; then
+    find "$src_dir" -maxdepth 1 -name '*.java' -type f | sort |
+    while IFS= read -r src_file; do
+      rel="$(basename "$src_file")"
+      lines="$(wc -l < "$src_file" | tr -d ' ')"
+      is_test=false
+      case "$rel" in
+        *Test.java) is_test=true ;;
+      esac
+      over_limit=false
+      if [ "$is_test" = "false" ] && [ "$lines" -gt 600 ]; then
+        over_limit=true
+        printf '%s\n' "source_line_limit: $rel has $lines lines, over 600" >> "$issue_file"
+      fi
+      pledge=false
+      if grep -q 'On my honor:' "$src_file"; then
+        pledge=true
+      fi
+      if [ "$first" = "true" ]; then
+        first=false
+      else
+        printf ','
+      fi
+      printf '{"path":'
+      json_string "$rel"
+      printf ',"lines":%s,"is_test":' "$lines"
+      json_bool "$is_test"
+      printf ',"over_source_limit":'
+      json_bool "$over_limit"
+      printf ',"has_pledge":'
+      json_bool "$pledge"
+      printf '}'
+    done
+  fi
+
+  printf '],"pledge_present":'
+  if [ -d "$src_dir" ] && grep -RIl 'On my honor:' "$src_dir" --include='*.java' >/dev/null 2>&1; then
+    json_bool true
+  else
+    json_bool false
+    printf '%s\n' "pledge_missing: no pledge text found in source files" >> "$issue_file"
+  fi
+  printf ',"issues":'
+  cs3114_json_file_array "$issue_file"
+  printf '}'
+}
+
 cs3114_report() {
   test_json="$(cs3114_test)"
   test_status="$?"
@@ -202,11 +314,13 @@ cs3114_report() {
   json_bool "$ok"
   printf ',"profile":'
   json_string "$WEBCAT_PROFILE"
-  printf ',"local":{"test":%s,"mutation":%s}' "$test_json" "$mutation_json"
+  printf ',"local":{"test":%s,"mutation":%s,"submission":' "$test_json" "$mutation_json"
+  cs3114_source_report
+  printf '}'
   printf ',"webcat_parity":{'
-  printf '"matches":["java_compile","student_junit_tests","local_pit_mutation"],'
-  printf '"partial":["per_file_mutation_targets"],'
-  printf '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","rendered_source_report","authenticated_submit"],'
+  printf '"matches":["java_compile","student_junit_tests","local_pit_mutation","local_submission_shape_checks","local_source_file_summary"],'
+  printf '"partial":["per_file_mutation_targets","source_rendered_report","style_shape_checks"],'
+  printf '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","authenticated_submit"],'
   printf '"note":'
   json_string "This is a local preflight report, not the official CS3114 Web-CAT report."
   printf '}}\n'

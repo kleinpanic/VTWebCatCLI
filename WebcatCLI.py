@@ -6,5 +6,5 @@ import runpy
 
 
 if __name__ == "__main__":
-    target = Path(__file__).resolve().parent / "vtwebcatcli" / "classic" / "WebcatCLI.py"
+    target = Path(__file__).resolve().parent / "vtwebcatcli" / "classic.py"
     runpy.run_path(str(target), run_name="__main__")

@@ -45,6 +45,14 @@ CREATED = []
 # Flip to True when we should skip cleanup (debug or --no-cleanup)
 SKIP_CLEANUP = False
 
+def repo_root():
+    """Return the repository root that owns the canonical templates directory."""
+    return Path(__file__).resolve().parents[1]
+
+def template_dir():
+    """Return the single checked-in template directory used by every entrypoint."""
+    return repo_root() / 'templates'
+
 def detect_main_class(src_root):
     """
     Walk src_root looking for any .java with a main(String[]) method,
@@ -229,7 +237,7 @@ def detect_impossible_branches(src_root):
 # Core functions
 # -------------------------------------------------------------------
 def load_rules(profile):
-    path = Path(__file__).parent / 'templates' / f'{profile}.rules.json'
+    path = template_dir() / f'{profile}.rules.json'
     if not path.is_file():
         sys.exit(f'Error: profile "{profile}" not found')
     return json.loads(path.read_text(encoding='utf-8'))
@@ -291,25 +299,20 @@ def ensure_pom(root, rules):
             logging.debug(f"Debug: pom.xml already exists at {pom}, skipping generation")
         return
 
-    script_dir = Path(__file__).parent
-    templates = script_dir / 'templates'
-    repo_templates = Path(__file__).resolve().parents[2] / 'templates'
+    templates = template_dir()
 
     # 1) gather the list of jar filenames (from JSON)
     jar_names = rules.get('external-jars', ['student.jar'])
 
     deps = []
-    # 2) for each name, try classic templates, repo templates, then PROJECT_ROOT/NAME
+    # 2) for each name, try repo templates, then PROJECT_ROOT/NAME
     for name in jar_names:
         cand1 = (templates / name).resolve()
-        cand2 = (repo_templates / name).resolve()
-        cand3 = (root / name).resolve()
+        cand2 = (root / name).resolve()
         if cand1.is_file():
             chosen = cand1
-        elif cand2.is_file():
-            chosen = cand2
         else:
-            chosen = cand3
+            chosen = cand2
 
         if chosen.is_file():
             aid = chosen.stem
@@ -323,7 +326,7 @@ def ensure_pom(root, rules):
       <systemPath>{chosen}</systemPath>
     </dependency>''')
         else:
-            logging.warning(f'⚠️ External JAR not found: looked for "{name}" in classic templates, repo templates, and project root')
+            logging.warning(f'⚠️ External JAR not found: looked for "{name}" in repo templates and project root')
 
     # 3) always include JUnit & JaCoCo deps after external jars
     deps.append('''
@@ -1007,7 +1010,7 @@ def main():
                 # first check in project root
                 p1 = Path(args.path) / jar_name
                 # then in templates/
-                p2 = Path(__file__).parent / 'templates' / jar_name
+                p2 = template_dir() / jar_name
                 jar_path = p1 if p1.is_file() else p2
                 if jar_path.is_file():
                     cp_entries.append(str(jar_path))

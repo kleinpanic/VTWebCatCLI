@@ -8,6 +8,22 @@ grading model is materially different.
 The goal is not "CS3114 replaces CS2505." The goal is one tool that can support
 multiple VT classes through first-class course profiles.
 
+## Repository Layout
+
+- `bin/webcat`: the primary profile-aware CLI for CS2505, CS3114, and future
+  course profiles.
+- `lib/`: shell backend modules used by `bin/webcat`.
+- `vtwebcatcli/classic.py`: the original Python checker implementation used
+  for CS2505-style checks.
+- `WebcatCLI.py`: root compatibility shim that dispatches to
+  `vtwebcatcli/classic.py`.
+- `profiles/`: course profile metadata.
+- `templates/`: the single canonical location for rules files and bundled
+  public course jars.
+- `tests/`: all repo test harnesses.
+- `docs/`: all user and developer documentation.
+- `plugin/`: editor integration files.
+
 ## Command Surfaces
 
 Classic VTWebCatCLI remains available:
@@ -26,9 +42,10 @@ bin/webcat mutate
 bin/webcat report
 ```
 
-Both command surfaces live in the same repository. The classic checker keeps
-the original style/Javadoc/test-convention/Maven/JaCoCo behavior. The newer
-`bin/webcat` command provides JSON output for editor and CI integration.
+Both command surfaces live in the same repository, but source has one
+canonical home: `vtwebcatcli/classic.py` for the original Python checker and
+`lib/` for the profile-aware runner used by `bin/webcat`. The root
+`WebcatCLI.py` file is only a compatibility shim for existing CS2505 users.
 
 ## Current Course Profiles
 
@@ -48,7 +65,7 @@ Implemented now:
 
 - original `WebcatCLI.py` entrypoint preserved;
 - original public files and root paths preserved for normal `git pull` usage;
-- classic checker relocated to `vtwebcatcli/classic/` as first-class code;
+- classic checker relocated to `vtwebcatcli/classic.py` as first-class code;
 - `webcat doctor`;
 - `webcat test` for `cs3114`;
 - `webcat mutate` for `cs3114`;
@@ -112,9 +129,9 @@ See `docs/cs3114-webcat-parity.md` for the current CS3114 parity map.
 Run local checks:
 
 ```sh
-python -m py_compile vtwebcatcli/classic/WebcatCLI.py
+python -m py_compile vtwebcatcli/classic.py
 python WebcatCLI.py --version
-bash vtwebcatcli/classic/tests/test_webcatcli.sh
+bash tests/classic-webcatcli.sh
 bash tests/classic-run-tests.sh
 bash tests/run.sh
 bash tests/repo-health.sh

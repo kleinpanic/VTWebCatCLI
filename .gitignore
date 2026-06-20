@@ -1,5 +1,9 @@
+.env
+.env.*
+.webcat.toml
 .webcat.local.toml
 .webcat.secrets
+.planning/
 *.class
 *.jar
 __pycache__/

@@ -184,7 +184,9 @@ out="$(cd "$tmp" && "$WEBCAT" report)"
 contains "$out" '"command":"report"' || fail "cs3114 report emits report command"
 contains "$out" '"local":{"test":' || fail "cs3114 report embeds local test result"
 contains "$out" '"mutation":{"schema":1,"command":"mutate","ok":false' || fail "cs3114 report embeds mutation error"
-contains "$out" '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","rendered_source_report","authenticated_submit"]' || fail "cs3114 report labels Web-CAT-only fields"
+contains "$out" '"submission":{"root":' || fail "cs3114 report embeds submission summary"
+contains "$out" '"source_files":[' || fail "cs3114 report lists source files"
+contains "$out" '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","authenticated_submit"]' || fail "cs3114 report labels Web-CAT-only fields"
 pass "cs3114 report parity labels"
 
 if "$WEBCAT" --profile missing doctor >/tmp/webcat-missing-profile.out 2>/dev/null; then
