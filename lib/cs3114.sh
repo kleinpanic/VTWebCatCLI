@@ -181,3 +181,33 @@ cs3114_mutate() {
   survived="$(awk -F, '$6 != "KILLED" { n++ } END { print n + 0 }' "$csv_file")"
   json_mutation_result "$WEBCAT_PROFILE" "$total" "$killed" "$survived" "$csv_file"
 }
+
+cs3114_report() {
+  test_json="$(cs3114_test)"
+  test_status="$?"
+
+  if [ "$test_status" -eq 0 ]; then
+    mutation_json="$(cs3114_mutate)"
+    mutation_status="$?"
+  else
+    mutation_json='null'
+    mutation_status=2
+  fi
+
+  ok=true
+  [ "$test_status" -ne 0 ] && ok=false
+  [ "$mutation_status" -ne 0 ] && ok=false
+
+  printf '{"schema":1,"command":"report","ok":'
+  json_bool "$ok"
+  printf ',"profile":'
+  json_string "$WEBCAT_PROFILE"
+  printf ',"local":{"test":%s,"mutation":%s}' "$test_json" "$mutation_json"
+  printf ',"webcat_parity":{'
+  printf '"matches":["java_compile","student_junit_tests","local_pit_mutation"],'
+  printf '"partial":["per_file_mutation_targets"],'
+  printf '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","rendered_source_report","authenticated_submit"],'
+  printf '"note":'
+  json_string "This is a local preflight report, not the official CS3114 Web-CAT report."
+  printf '}}\n'
+}

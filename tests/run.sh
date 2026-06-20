@@ -67,7 +67,7 @@ out="$("$WEBCAT" --profile cs3114 doctor)"
 contains "$out" '"profile":"cs3114"' || fail "doctor honors cs3114 override"
 contains "$out" '"test":"direct_junit"' || fail "cs3114 uses direct JUnit backend"
 contains "$out" '"mutation":"pit168"' || fail "cs3114 uses PIT backend"
-contains "$out" '"commands":["test","mutate","doctor"]' || fail "cs3114 command capabilities"
+contains "$out" '"commands":["test","mutate","doctor","report"]' || fail "cs3114 command capabilities"
 pass "doctor cs3114 profile"
 
 tmp="${TMPDIR:-/tmp}/webcat-test-$$"
@@ -176,6 +176,16 @@ contains "$out" '"ok":true' || fail "cs3114 fixture passes"
 contains "$out" '"total":2' || fail "cs3114 fixture runs comma-separated test classes"
 contains "$out" '"failed":0' || fail "cs3114 fixture has no failures"
 pass "cs3114 direct junit fixture"
+
+cat >> "$tmp/.webcat.toml" <<EOF
+pit_dir = "$tmp/missing-pit"
+EOF
+out="$(cd "$tmp" && "$WEBCAT" report)"
+contains "$out" '"command":"report"' || fail "cs3114 report emits report command"
+contains "$out" '"local":{"test":' || fail "cs3114 report embeds local test result"
+contains "$out" '"mutation":{"schema":1,"command":"mutate","ok":false' || fail "cs3114 report embeds mutation error"
+contains "$out" '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","rendered_source_report","authenticated_submit"]' || fail "cs3114 report labels Web-CAT-only fields"
+pass "cs3114 report parity labels"
 
 if "$WEBCAT" --profile missing doctor >/tmp/webcat-missing-profile.out 2>/dev/null; then
   fail "unknown profile should fail"

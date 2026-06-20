@@ -23,6 +23,7 @@ The profile-aware runner is:
 bin/webcat doctor
 bin/webcat test
 bin/webcat mutate
+bin/webcat report
 ```
 
 Both command surfaces live in the same repository. The classic checker keeps
@@ -34,7 +35,8 @@ the original style/Javadoc/test-convention/Maven/JaCoCo behavior. The newer
 - `cs2505`: VTWebCatCLI classic checks: style, Javadoc, test conventions,
   Maven/JUnit execution, and JaCoCo coverage parsing.
 - `cs3114`: direct Java compile, `student.jar` JUnit tests, and PIT mutation
-  testing with the course-specific mutator set.
+  testing with the course-specific mutator set. This is a local preflight, not
+  a complete replacement for the official Web-CAT report yet.
 
 Additional classes should be added as new profile directories under
 `profiles/<course>/`, with course-specific logic isolated behind a backend
@@ -50,6 +52,8 @@ Implemented now:
 - `webcat doctor`;
 - `webcat test` for `cs3114`;
 - `webcat mutate` for `cs3114`;
+- `webcat report` for `cs3114`, with local checks plus explicit unsupported
+  Web-CAT-only fields;
 - `webcat test` bridge for `cs2505` through the classic VTWebCatCLI backend;
 - `.webcat.toml` walk-up config loading;
 - schema-versioned JSON output from the profile runner;
@@ -61,6 +65,9 @@ Not complete yet:
 - broader CS2505 course fixtures through the `bin/webcat --profile cs2505`
   wrapper;
 - Web-CAT authenticated `targets` and `submit`;
+- CS3114 Web-CAT report parity: official style/readability scoring, problem
+  coverage/reference-test comparison, final score math, early bonus display,
+  and source-rendered report output;
 - credential backends;
 - Neovim commands;
 - CS3114 jar vendoring/provenance completion.
@@ -89,11 +96,16 @@ target_tests = "MovieRaterTest"
 
 ## Verification Notes
 
-Local CS3114 Project 1 verification runs through `bin/webcat`, but local PIT
-output is not the same thing as the Web-CAT mutation percentage. Web-CAT may
-use different instrumentation, hidden/reference checks, mutation targets, or
-full-precision scoring. Do not quote a local percentage as the official Web-CAT
-score unless it has been calibrated against the current submission report.
+Local CS3114 Project 1 verification runs through `bin/webcat`, but it is not
+the same thing as the full Web-CAT report. The current CLI does not reproduce
+Web-CAT's hidden/reference problem coverage, official style/readability score,
+final score calculation, early bonus, or rendered source report. Local PIT
+output may also differ from Web-CAT because of instrumentation, mutation
+targets, jars, or full-precision scoring. Do not quote a local percentage as
+the official Web-CAT score unless it has been calibrated against the current
+submission report.
+
+See `docs/cs3114-webcat-parity.md` for the current CS3114 parity map.
 
 ## Development
 
