@@ -38,6 +38,7 @@ The profile-aware runner is:
 ```sh
 bin/webcat doctor
 bin/webcat test
+bin/webcat coverage
 bin/webcat mutate
 bin/webcat report
 ```
@@ -51,9 +52,10 @@ canonical home: `vtwebcatcli/classic.py` for the original Python checker and
 
 - `cs2505`: VTWebCatCLI classic checks: style, Javadoc, test conventions,
   Maven/JUnit execution, and JaCoCo coverage parsing.
-- `cs3114`: direct Java compile, `student.jar` JUnit tests, and PIT mutation
-  testing with the course-specific mutator set. This is a local preflight, not
-  a complete replacement for the official Web-CAT report yet.
+- `cs3114`: direct Java compile, `student.jar` JUnit tests, JaCoCo coverage,
+  and PIT mutation testing with the course-specific mutator set. This is a
+  local preflight, not a complete replacement for the official Web-CAT report
+  yet.
 
 Additional classes should be added as new profile directories under
 `profiles/<course>/`, with course-specific logic isolated behind a backend
@@ -68,6 +70,7 @@ Implemented now:
 - classic checker relocated to `vtwebcatcli/classic.py` as first-class code;
 - `webcat doctor`;
 - `webcat test` for `cs3114`;
+- `webcat coverage` for `cs3114`;
 - `webcat mutate` for `cs3114`;
 - `webcat report` for `cs3114`, with local checks plus explicit unsupported
   Web-CAT-only fields;
@@ -106,6 +109,9 @@ student_jar = "lib/student.jar"
 junit_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.junit_4.13.2.v20240929-1000.jar"
 hamcrest_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.hamcrest_3.0.0.jar"
 pit_dir = "tools/Eclipse.app/Contents/Eclipse/plugins/org.pitest_1.6.8.v20230703-1755/lib"
+# Optional: auto-discovered from tools/Eclipse.app when present.
+jacoco_agent_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.jacoco.agent_0.8.14.202510111229.jar"
+jacoco_core_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.jacoco.core_0.8.14.202510111229.jar"
 
 target_classes = "MovieRaterDB,SparseMatrix"
 target_tests = "MovieRaterTest"
@@ -116,8 +122,8 @@ target_tests = "MovieRaterTest"
 Local CS3114 Project 1 verification runs through `bin/webcat`, but it is not
 the same thing as the full Web-CAT report. The current CLI does not reproduce
 Web-CAT's hidden/reference problem coverage, official style/readability score,
-final score calculation, early bonus, or rendered source report. Local PIT
-output may also differ from Web-CAT because of instrumentation, mutation
+final score calculation, early bonus, or rendered source report. Local JaCoCo
+and PIT output may also differ from Web-CAT because of instrumentation,
 targets, jars, or full-precision scoring. Do not quote a local percentage as
 the official Web-CAT score unless it has been calibrated against the current
 submission report.

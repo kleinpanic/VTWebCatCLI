@@ -45,6 +45,57 @@ cs3114_class_names() {
     paste -sd, -
 }
 
+cs3114_find_plugin_jar() {
+  pattern="$1"
+  root="$(project_root)"
+  plugin_dir="$root/tools/Eclipse.app/Contents/Eclipse/plugins"
+  if [ -d "$plugin_dir" ]; then
+    find "$plugin_dir" -name "$pattern" -type f | sort | tail -1
+  fi
+}
+
+cs3114_find_plugin_jars() {
+  pattern="$1"
+  root="$(project_root)"
+  plugin_dir="$root/tools/Eclipse.app/Contents/Eclipse/plugins"
+  if [ -d "$plugin_dir" ]; then
+    find "$plugin_dir" -name "$pattern" -type f | sort | paste -sd: -
+  fi
+}
+
+cs3114_jacoco_agent_jar() {
+  root="$(project_root)"
+  if [ -n "$WEBCAT_JACOCO_AGENT_JAR" ]; then
+    abs_path "$WEBCAT_JACOCO_AGENT_JAR" "$root"
+  else
+    cs3114_find_plugin_jar 'org.jacoco.agent_*.jar'
+  fi
+}
+
+cs3114_jacoco_core_jar() {
+  root="$(project_root)"
+  if [ -n "$WEBCAT_JACOCO_CORE_JAR" ]; then
+    abs_path "$WEBCAT_JACOCO_CORE_JAR" "$root"
+  else
+    cs3114_find_plugin_jar 'org.jacoco.core_*.jar'
+  fi
+}
+
+cs3114_resolve_jacoco_agent_runtime() {
+  agent_plugin="$1"
+  output_jar="$2"
+  if unzip -p "$agent_plugin" META-INF/MANIFEST.MF 2>/dev/null | grep -q '^Premain-Class:'; then
+    printf '%s\n' "$agent_plugin"
+    return 0
+  fi
+  if unzip -l "$agent_plugin" 2>/dev/null | grep -q 'jacocoagent\.jar'; then
+    unzip -p "$agent_plugin" jacocoagent.jar > "$output_jar"
+    printf '%s\n' "$output_jar"
+    return 0
+  fi
+  return 1
+}
+
 cs3114_compile() {
   root="$(project_root)"
   src_dir="$(abs_path "$WEBCAT_SRC" "$root")"
@@ -124,6 +175,181 @@ cs3114_test() {
 
   json_test_result "$WEBCAT_PROFILE" "$total" "$failed" "$output_file"
   return 0
+}
+
+cs3114_write_jacoco_summary_helper() {
+  helper_java="$1"
+  cat > "$helper_java" <<'EOF'
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import org.jacoco.core.analysis.Analyzer;
+import org.jacoco.core.analysis.CoverageBuilder;
+import org.jacoco.core.analysis.IBundleCoverage;
+import org.jacoco.core.analysis.ICounter;
+import org.jacoco.core.tools.ExecFileLoader;
+
+public class JacocoSummary {
+    private static List<File> classFiles(File classesDir, String csv) {
+        List<File> files = new ArrayList<File>();
+        if (csv == null || csv.trim().isEmpty()) {
+            files.add(classesDir);
+            return files;
+        }
+        for (String rawName : csv.split(",")) {
+            String className = rawName.trim();
+            if (className.isEmpty()) {
+                continue;
+            }
+            String rel = className.replace('.', File.separatorChar);
+            File mainClass = new File(classesDir, rel + ".class");
+            if (mainClass.isFile()) {
+                files.add(mainClass);
+            }
+            File parent = mainClass.getParentFile();
+            String prefix = mainClass.getName().replace(".class", "$");
+            if (parent != null && parent.isDirectory()) {
+                File[] inner = parent.listFiles();
+                if (inner != null) {
+                    for (File file : inner) {
+                        if (file.getName().startsWith(prefix)
+                            && file.getName().endsWith(".class")) {
+                            files.add(file);
+                        }
+                    }
+                }
+            }
+        }
+        return files;
+    }
+
+    private static void printCounter(String name, ICounter counter,
+        boolean comma) {
+        int covered = counter.getCoveredCount();
+        int total = counter.getTotalCount();
+        double pct = total == 0 ? 100.0 : (100.0 * covered / total);
+        System.out.printf(Locale.US,
+            "%s\"%s\":{\"covered\":%d,\"total\":%d,\"pct\":%.1f}",
+            comma ? "," : "", name, covered, total, pct);
+    }
+
+    public static void main(String[] args) throws IOException {
+        ExecFileLoader loader = new ExecFileLoader();
+        loader.load(new File(args[0]));
+        CoverageBuilder builder = new CoverageBuilder();
+        Analyzer analyzer = new Analyzer(loader.getExecutionDataStore(),
+            builder);
+        File classesDir = new File(args[1]);
+        String targetClasses = args.length > 2 ? args[2] : "";
+        for (File file : classFiles(classesDir, targetClasses)) {
+            analyzer.analyzeAll(file);
+        }
+        IBundleCoverage bundle = builder.getBundle("MovieRaterProject");
+        System.out.print("{");
+        printCounter("instruction", bundle.getInstructionCounter(), false);
+        printCounter("branch", bundle.getBranchCounter(), true);
+        printCounter("line", bundle.getLineCounter(), true);
+        printCounter("method", bundle.getMethodCounter(), true);
+        printCounter("class", bundle.getClassCounter(), true);
+        System.out.print("}");
+    }
+}
+EOF
+}
+
+cs3114_coverage() {
+  if ! cs3114_compile coverage >/tmp/webcat-compile.out 2>/tmp/webcat-compile.err; then
+    json_error "coverage" "compile_failed" "$(cat /tmp/webcat-compile.err)" "Fix compile errors first."
+    return 1
+  fi
+
+  root="$(project_root)"
+  build_dir="$root/.webcat-build/classes"
+  helper_dir="$root/.webcat-build/jacoco-helper"
+  helper_java="$root/.webcat-build/JacocoSummary.java"
+  student_jar="$(abs_path "${WEBCAT_STUDENT_JAR:-lib/student.jar}" "$root")"
+  junit_jar="$(abs_path "$WEBCAT_JUNIT_JAR" "$root")"
+  hamcrest_jar="$(abs_path "$WEBCAT_HAMCREST_JAR" "$root")"
+  jacoco_agent_jar="$(cs3114_jacoco_agent_jar)"
+  jacoco_core_jar="$(cs3114_jacoco_core_jar)"
+  jacoco_helper_cp="$jacoco_core_jar"
+  asm_jars="$(cs3114_find_plugin_jars 'org.objectweb.asm*.jar')"
+  [ -n "$asm_jars" ] && jacoco_helper_cp="$jacoco_helper_cp:$asm_jars"
+  java_bin="$(cs3114_java_bin)"
+  javac_bin="$(cs3114_javac_bin)"
+  coverage_dir="$root/.webcat-coverage"
+  runtime_agent_jar="$root/.webcat-build/jacocoagent-runtime.jar"
+  exec_file="$coverage_dir/jacoco.exec"
+  output_file="$coverage_dir/junit.out"
+  summary_file="$coverage_dir/summary.json"
+  src_dir="$(abs_path "$WEBCAT_SRC" "$root")"
+  target_classes="$WEBCAT_TARGET_CLASSES"
+  target_tests="$WEBCAT_TARGET_TESTS"
+  [ -n "$target_classes" ] || target_classes="$(find "$src_dir" -name '*.java' ! -name '*Test.java' -type f | sed "s#^$src_dir/##; s#/#.#g; s#\\.java\$##" | paste -sd, -)"
+  [ -n "$target_tests" ] || target_tests="$(cs3114_class_names "$src_dir" Test)"
+
+  if [ ! -f "$jacoco_agent_jar" ]; then
+    json_error "coverage" "missing_jar" "JaCoCo agent jar not found" "Set jacoco_agent_jar in .webcat.toml or keep Eclipse tools under tools/Eclipse.app."
+    return 1
+  fi
+  if [ ! -f "$jacoco_core_jar" ]; then
+    json_error "coverage" "missing_jar" "JaCoCo core jar not found" "Set jacoco_core_jar in .webcat.toml or keep Eclipse tools under tools/Eclipse.app."
+    return 1
+  fi
+  if [ ! -x "$java_bin" ] || [ ! -x "$javac_bin" ]; then
+    json_error "coverage" "missing_tool" "java or javac not executable" "Set java_bin and javac_bin in .webcat.toml."
+    return 1
+  fi
+
+  rm -rf "$coverage_dir" "$helper_dir"
+  mkdir -p "$coverage_dir" "$helper_dir"
+
+  if ! runtime_agent_jar="$(cs3114_resolve_jacoco_agent_runtime "$jacoco_agent_jar" "$runtime_agent_jar")"; then
+    json_error "coverage" "bad_agent_jar" "JaCoCo agent jar is not a javaagent and does not contain jacocoagent.jar" "Use a JaCoCo runtime agent jar or the Eclipse org.jacoco.agent plugin jar."
+    return 1
+  fi
+
+  old_ifs="$IFS"
+  IFS=','
+  set -- $target_tests
+  IFS="$old_ifs"
+
+  cp_value="$build_dir:$student_jar"
+  [ -n "$junit_jar" ] && cp_value="$cp_value:$junit_jar"
+  [ -n "$hamcrest_jar" ] && cp_value="$cp_value:$hamcrest_jar"
+
+  "$java_bin" -javaagent:"$runtime_agent_jar=destfile=$exec_file,append=false" \
+    -Djava.security.manager=allow -cp "$cp_value" org.junit.runner.JUnitCore "$@" >"$output_file" 2>&1
+  status="$?"
+  if [ "$status" -ne 0 ]; then
+    json_error "coverage" "junit_failed" "$(cat "$output_file")" "Fix failing tests before trusting coverage."
+    return 1
+  fi
+
+  cs3114_write_jacoco_summary_helper "$helper_java"
+  "$javac_bin" -cp "$jacoco_helper_cp" -d "$helper_dir" "$helper_java" >/tmp/webcat-jacoco-helper.out 2>/tmp/webcat-jacoco-helper.err
+  if [ "$?" -ne 0 ]; then
+    json_error "coverage" "helper_compile_failed" "$(cat /tmp/webcat-jacoco-helper.err)" "Check jacoco_core_jar."
+    return 1
+  fi
+
+  "$java_bin" -cp "$helper_dir:$jacoco_helper_cp" JacocoSummary "$exec_file" "$build_dir" "$target_classes" >"$summary_file" 2>/tmp/webcat-jacoco-summary.err
+  if [ "$?" -ne 0 ]; then
+    json_error "coverage" "summary_failed" "$(cat /tmp/webcat-jacoco-summary.err)" "Check jacoco.exec and compiled classes."
+    return 1
+  fi
+
+  printf '{"schema":1,"command":"coverage","ok":true,"profile":'
+  json_string "$WEBCAT_PROFILE"
+  printf ',"backend":"jacoco","exec_file":'
+  json_string "$exec_file"
+  printf ',"target_classes":'
+  json_csv_array "$target_classes"
+  printf ',"summary":%s,"raw_output":' "$(cat "$summary_file")"
+  json_string "$(cat "$output_file")"
+  printf '}\n'
 }
 
 cs3114_mutate() {
@@ -299,9 +525,11 @@ cs3114_report() {
   test_status="$?"
 
   if [ "$test_status" -eq 0 ]; then
+    coverage_json="$(cs3114_coverage)"
     mutation_json="$(cs3114_mutate)"
     mutation_status="$?"
   else
+    coverage_json='null'
     mutation_json='null'
     mutation_status=2
   fi
@@ -314,12 +542,12 @@ cs3114_report() {
   json_bool "$ok"
   printf ',"profile":'
   json_string "$WEBCAT_PROFILE"
-  printf ',"local":{"test":%s,"mutation":%s,"submission":' "$test_json" "$mutation_json"
+  printf ',"local":{"test":%s,"coverage":%s,"mutation":%s,"submission":' "$test_json" "$coverage_json" "$mutation_json"
   cs3114_source_report
   printf '}'
   printf ',"webcat_parity":{'
-  printf '"matches":["java_compile","student_junit_tests","local_pit_mutation","local_submission_shape_checks","local_source_file_summary"],'
-  printf '"partial":["per_file_mutation_targets","source_rendered_report","style_shape_checks"],'
+  printf '"matches":["java_compile","student_junit_tests","local_jacoco_coverage","local_pit_mutation","local_submission_shape_checks","local_source_file_summary"],'
+  printf '"partial":["per_file_mutation_targets","source_rendered_report","style_shape_checks","coverage_threshold_mapping"],'
   printf '"unsupported":["assignment_metadata","official_style_score","design_readability_score","hidden_reference_correctness","problem_coverage","valid_test_percentage","official_final_score","early_bonus","authenticated_submit"],'
   printf '"note":'
   json_string "This is a local preflight report, not the official CS3114 Web-CAT report."

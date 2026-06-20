@@ -10,6 +10,8 @@ WEBCAT_STUDENT_JAR=""
 WEBCAT_JUNIT_JAR=""
 WEBCAT_HAMCREST_JAR=""
 WEBCAT_PIT_DIR=""
+WEBCAT_JACOCO_AGENT_JAR=""
+WEBCAT_JACOCO_CORE_JAR=""
 WEBCAT_JAVA_BIN=""
 WEBCAT_JAVAC_BIN=""
 WEBCAT_TARGET_CLASSES=""
@@ -67,6 +69,12 @@ config_load() {
 
     value="$(config_value pit_dir "$path")"
     [ -n "$value" ] && WEBCAT_PIT_DIR="$value"
+
+    value="$(config_value jacoco_agent_jar "$path")"
+    [ -n "$value" ] && WEBCAT_JACOCO_AGENT_JAR="$value"
+
+    value="$(config_value jacoco_core_jar "$path")"
+    [ -n "$value" ] && WEBCAT_JACOCO_CORE_JAR="$value"
 
     value="$(config_value java_bin "$path")"
     [ -n "$value" ] && WEBCAT_JAVA_BIN="$value"

@@ -13,6 +13,7 @@ The current CLI proves:
 
 - Java compilation with the configured Java release.
 - Student JUnit tests through `student.jar`.
+- Local JaCoCo coverage over configured target classes.
 - Local PIT mutation coverage for configured target classes and tests.
 - A `report` command that combines local checks and explicitly labels
   Web-CAT-only fields as unsupported.
@@ -45,8 +46,9 @@ Those unsupported items can be improved in two different ways:
 | Total score | `60.0 + 10.0 early bonus = 70.0/110.0` | Missing |
 | Design/readability | `/50.0 <Awaiting Staff>` | Missing |
 | Style/coding | `10.0/10.0` plus per-file remarks/deductions | Missing |
-| Correctness/testing | `50.0/50.0` | Partial, inferred only from public tests and local mutation |
+| Correctness/testing | `50.0/50.0` | Partial, inferred only from public tests, local JaCoCo, and local mutation |
 | Per-file mutation | `MovieRaterDB.java 100.0%`, `SparseMatrix.java 93.8%` | Partial, local PIT survivors and aggregate percent only |
+| Coverage counters | instruction/branch/line/method/class counters | Partial, local JaCoCo over configured target classes |
 | Problem coverage | `100%` from reference-test comparison | Missing, depends on Web-CAT reference implementation |
 | Valid test percentage | `100%` from running tests against reference implementation | Missing, depends on Web-CAT reference implementation |
 | Student test run | pass/failure/error counts for submitted tests | Matched for local JUnit test execution |
@@ -82,16 +84,17 @@ reports:
 bin/webcat report
 ```
 
-returns local test and mutation JSON plus a `webcat_parity` block. That block
-is deliberately explicit about unsupported official Web-CAT fields so consumers
-do not mistake the local report for the official grader report.
+returns local test, JaCoCo coverage, mutation, and submission-shape JSON plus a
+`webcat_parity` block. That block is deliberately explicit about unsupported
+official Web-CAT fields so consumers do not mistake the local report for the
+official grader report.
 
 The official PDF report for an earlier submission reported `93.8%` for
 `SparseMatrix.java` and `100.0%` for `MovieRaterDB.java`. Those values are not
 directly interchangeable with the local CLI result because the local run uses
-the current working tree and a local PIT invocation, while Web-CAT uses its own
-submission snapshot, instrumentation, targets, reference-test comparison, and
-full-precision scoring.
+the current working tree and local JaCoCo/PIT invocations, while Web-CAT uses
+its own submission snapshot, instrumentation, targets, reference-test
+comparison, and full-precision scoring.
 
 ## Required Work For Replacement-Level CS3114 Support
 

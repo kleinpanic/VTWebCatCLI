@@ -49,8 +49,9 @@ Do not blend course assumptions.
 
 - CS2505 uses classic VTWebCatCLI style/Javadoc/test-convention checks plus
   Maven/JUnit/JaCoCo behavior.
-- CS3114 uses direct Java compilation, `student.jar` JUnit tests, and PIT
-  mutation with a course-specific mutator set.
+- CS3114 uses direct Java compilation, `student.jar` JUnit tests, JaCoCo
+  coverage over configured target classes, and PIT mutation with a
+  course-specific mutator set.
 
 If another VT course differs from both, it should get its own backend.
 

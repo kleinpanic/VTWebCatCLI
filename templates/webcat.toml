@@ -4,3 +4,8 @@ src = "src"
 threshold = "90"
 gate = "block"
 assignment_path = "Virginia Tech/CS 3114/Project 1: Movie Rater"
+
+# Optional for CS3114 coverage. If omitted, bin/webcat will try to discover
+# these under tools/Eclipse.app/Contents/Eclipse/plugins.
+# jacoco_agent_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.jacoco.agent_0.8.x.jar"
+# jacoco_core_jar = "tools/Eclipse.app/Contents/Eclipse/plugins/org.jacoco.core_0.8.x.jar"

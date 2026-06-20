@@ -16,6 +16,7 @@ usage: webcat [--profile NAME] <command>
 commands:
   doctor    report local tool/config/profile readiness
   test      run profile-specific local tests
+  coverage  run profile-specific local coverage analysis
   mutate    run profile-specific mutation analysis
   report    run a Web-CAT-shaped local report with explicit parity gaps
 EOF
@@ -153,6 +154,14 @@ case "$COMMAND" in
       exit 2
     fi
     ;;
+  coverage)
+    if [ "$WEBCAT_PROFILE" = "cs3114" ]; then
+      cs3114_coverage
+    else
+      json_unsupported "coverage" "coverage is not implemented yet for profile: $WEBCAT_PROFILE"
+      exit 2
+    fi
+    ;;
   report)
     if [ "$WEBCAT_PROFILE" = "cs3114" ]; then
       cs3114_report
@@ -162,7 +171,7 @@ case "$COMMAND" in
     fi
     ;;
   *)
-    json_error "$COMMAND" "unknown_command" "unknown command: $COMMAND" "Supported commands: doctor, test, mutate, report."
+    json_error "$COMMAND" "unknown_command" "unknown command: $COMMAND" "Supported commands: doctor, test, coverage, mutate, report."
     exit 2
     ;;
 esac
